@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DriveTrack</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Login -->
+  <div id="login-screen" class="auth-screen">
+    <div class="auth-card">
+      <h1 class="logo">DriveTrack</h1>
+      <p class="auth-subtitle">Einloggen</p>
+      <div id="login-error" class="error-text"></div>
+      <input id="login-username" placeholder="Benutzername" autocomplete="username" />
+      <input id="login-password" type="password" placeholder="Passwort" autocomplete="current-password" />
+      <button id="login-btn" class="primary-btn">Einloggen</button>
+      <button id="show-register" class="link-btn">Noch kein Konto? Jetzt registrieren</button>
+    </div>
+  </div>
+
+  <!-- Registrieren -->
+  <div id="register-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <h1 class="logo">DriveTrack</h1>
+      <p class="auth-subtitle">Registrieren</p>
+      <p class="auth-hint">
+        Dein Backup wird Ende-zu-Ende-verschlüsselt – nicht mal wir können es lesen.
+        Du bekommst per Mail einen Recovery-Code, bewahr ihn gut auf.
+      </p>
+      <div id="register-error" class="error-text"></div>
+      <input id="register-username" placeholder="Benutzername" autocomplete="username" />
+      <input id="register-email" placeholder="E-Mail" type="email" autocomplete="email" />
+      <input id="register-password" type="password" placeholder="Passwort" autocomplete="new-password" />
+      <input id="register-password2" type="password" placeholder="Passwort wiederholen" autocomplete="new-password" />
+      <button id="register-btn" class="primary-btn">Konto erstellen</button>
+      <button id="show-login" class="link-btn">Schon ein Konto? Einloggen</button>
+    </div>
+  </div>
+
+  <!-- Entsperren nach Reload -->
+  <div id="unlock-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <h1 class="logo">DriveTrack</h1>
+      <p class="auth-subtitle">Wieder freischalten</p>
+      <p class="auth-hint" id="unlock-hint"></p>
+      <div id="unlock-error" class="error-text"></div>
+      <input id="unlock-password" type="password" placeholder="Passwort" autocomplete="current-password" />
+      <button id="unlock-btn" class="primary-btn">Entsperren</button>
+      <button id="unlock-logout-btn" class="link-btn">Abmelden</button>
+    </div>
+  </div>
+
+  <!-- Hauptanwendung -->
+  <div id="main-app" class="hidden">
+    <header class="topbar">
+      <div class="logo">DriveTrack</div>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="home">Home</button>
+        <button class="tab-btn" data-tab="fahrten">Fahrten</button>
+      </nav>
+      <button id="settings-btn" class="settings-link">Konto / Settings</button>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div id="stats-panel" class="stats-panel"></div>
+        <div class="sidebar-header">Letzte Fahrten:</div>
+        <div id="trip-list" class="trip-list"></div>
+      </aside>
+
+      <main class="map-area">
+        <div class="car-selector">
+          <select id="car-select">
+            <option value="">Alle Autos</option>
+          </select>
+        </div>
+        <div id="map"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Fahrt-Detail -->
+  <div id="trip-detail-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="trip-detail-back">&larr; Zurück</button>
+    <div id="trip-detail-info" class="detail-info"></div>
+    <div id="trip-detail-map"></div>
+  </div>
+
+  <!-- Konto / Settings -->
+  <div id="settings-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="settings-back">&larr; Zurück</button>
+    <div class="auth-card settings-card">
+      <h2>Konto</h2>
+      <p id="settings-username-label" class="auth-hint"></p>
+      <button id="settings-reload-btn" class="primary-btn">Daten vom Server neu laden</button>
+      <button id="settings-logout-btn" class="link-btn danger">Abmelden</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
