@@ -76,9 +76,10 @@ document.getElementById("login-btn").addEventListener("click", async () => {
       passwordSalt: result.passwordSalt,
       dekWrappedPassword: result.dekWrappedPassword,
     });
-    await loadAndRenderBackup();
+    // Screen ZUERST sichtbar machen, dann erst die Karte aufbauen - Leaflet
+    // berechnet sonst die Kachelgröße in einem noch unsichtbaren (display:none) Container falsch.
     showScreen("main");
-    setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+    await loadAndRenderBackup();
   } catch (e) {
     errorEl.textContent = e.message || "Login fehlgeschlagen";
   }
@@ -146,9 +147,8 @@ document.getElementById("unlock-btn").addEventListener("click", async () => {
   try {
     const wrapped = cryptoUtil.wrappedStringToBlob(session.dekWrappedPassword);
     dek = await cryptoUtil.unwrapDek(wrapped, password, session.passwordSalt);
-    await loadAndRenderBackup();
     showScreen("main");
-    setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+    await loadAndRenderBackup();
   } catch (e) {
     errorEl.textContent = "Falsches Passwort";
   }
@@ -356,6 +356,7 @@ function ensureMainMap() {
 
 function renderMainMap(trips) {
   ensureMainMap();
+  mainMap.invalidateSize();
   mainMapLayers.forEach((l) => mainMap.removeLayer(l));
   mainMapLayers = [];
 
