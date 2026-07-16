@@ -36,6 +36,7 @@ function clearSession() {
 const screens = {
   login: document.getElementById("login-screen"),
   register: document.getElementById("register-screen"),
+  forgot: document.getElementById("forgot-screen"),
   unlock: document.getElementById("unlock-screen"),
   main: document.getElementById("main-app"),
   detail: document.getElementById("trip-detail-screen"),
@@ -76,9 +77,10 @@ document.getElementById("login-btn").addEventListener("click", async () => {
       passwordSalt: result.passwordSalt,
       dekWrappedPassword: result.dekWrappedPassword,
     });
-    await loadAndRenderBackup();
+    // Screen ZUERST sichtbar machen, dann erst die Karte aufbauen - Leaflet
+    // berechnet sonst die Kachelgröße in einem noch unsichtbaren (display:none) Container falsch.
     showScreen("main");
-    setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+    await loadAndRenderBackup();
   } catch (e) {
     errorEl.textContent = e.message || "Login fehlgeschlagen";
   }
@@ -86,6 +88,8 @@ document.getElementById("login-btn").addEventListener("click", async () => {
 
 document.getElementById("show-register").addEventListener("click", () => showScreen("register"));
 document.getElementById("show-login").addEventListener("click", () => showScreen("login"));
+document.getElementById("show-forgot").addEventListener("click", () => showScreen("forgot"));
+document.getElementById("forgot-back-btn").addEventListener("click", () => showScreen("login"));
 
 // --- Registrieren ---
 document.getElementById("register-btn").addEventListener("click", async () => {
@@ -136,6 +140,71 @@ document.getElementById("register-btn").addEventListener("click", async () => {
   }
 });
 
+// --- Passwort vergessen ---
+document.getElementById("forgot-request-btn").addEventListener("click", async () => {
+  const email = document.getElementById("forgot-email").value.trim();
+  const errorEl = document.getElementById("forgot-error");
+  errorEl.textContent = "";
+  if (!email) return;
+
+  try {
+    await api.requestReset(email);
+    document.getElementById("forgot-step-email").classList.add("hidden");
+    document.getElementById("forgot-step-reset").classList.remove("hidden");
+  } catch (e) {
+    // Absichtlich dieselbe Meldung wie bei Erfolg (verhindert Ausspaehen registrierter Mails)
+    document.getElementById("forgot-step-email").classList.add("hidden");
+    document.getElementById("forgot-step-reset").classList.remove("hidden");
+  }
+});
+
+document.getElementById("forgot-reset-btn").addEventListener("click", async () => {
+  const email = document.getElementById("forgot-email").value.trim();
+  const code = document.getElementById("forgot-code").value.trim();
+  const recoveryCode = document.getElementById("forgot-recovery-code").value.trim();
+  const newPassword = document.getElementById("forgot-new-password").value;
+  const newPassword2 = document.getElementById("forgot-new-password2").value;
+  const errorEl = document.getElementById("forgot-error");
+  errorEl.textContent = "";
+
+  if (!code || !recoveryCode || !newPassword) {
+    errorEl.textContent = "Bitte alle Felder ausfüllen";
+    return;
+  }
+  if (newPassword.length < 8) {
+    errorEl.textContent = "Passwort muss mindestens 8 Zeichen haben";
+    return;
+  }
+  if (newPassword !== newPassword2) {
+    errorEl.textContent = "Passwörter stimmen nicht überein";
+    return;
+  }
+
+  try {
+    const verifyResult = await api.verifyResetCode(email, code);
+    const wrappedRecovery = cryptoUtil.wrappedStringToBlob(verifyResult.dekWrappedRecovery);
+    const recoveredDek = await cryptoUtil.unwrapDek(wrappedRecovery, recoveryCode, verifyResult.recoverySalt);
+
+    const newPasswordSalt = cryptoUtil.randomSaltBase64();
+    const newDekWrappedPassword = cryptoUtil.blobToWrappedString(
+      await cryptoUtil.wrapDek(recoveredDek, newPassword, newPasswordSalt)
+    );
+
+    await api.confirmReset({
+      email, code, newPassword,
+      newDekWrappedPassword, newPasswordSalt,
+    });
+
+    alert("Passwort erfolgreich zurückgesetzt. Du kannst dich jetzt einloggen.");
+    document.getElementById("forgot-step-email").classList.remove("hidden");
+    document.getElementById("forgot-step-reset").classList.add("hidden");
+    document.getElementById("login-username").value = "";
+    showScreen("login");
+  } catch (e) {
+    errorEl.textContent = e.message || "Recovery-Code oder Code falsch";
+  }
+});
+
 // --- Entsperren (nach Reload, Token schon vorhanden) ---
 document.getElementById("unlock-btn").addEventListener("click", async () => {
   const password = document.getElementById("unlock-password").value;
@@ -146,9 +215,8 @@ document.getElementById("unlock-btn").addEventListener("click", async () => {
   try {
     const wrapped = cryptoUtil.wrappedStringToBlob(session.dekWrappedPassword);
     dek = await cryptoUtil.unwrapDek(wrapped, password, session.passwordSalt);
-    await loadAndRenderBackup();
     showScreen("main");
-    setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+    await loadAndRenderBackup();
   } catch (e) {
     errorEl.textContent = "Falsches Passwort";
   }
@@ -356,6 +424,7 @@ function ensureMainMap() {
 
 function renderMainMap(trips) {
   ensureMainMap();
+  mainMap.invalidateSize();
   mainMapLayers.forEach((l) => mainMap.removeLayer(l));
   mainMapLayers = [];
 

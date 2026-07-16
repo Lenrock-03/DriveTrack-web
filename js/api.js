@@ -23,6 +23,7 @@ export const api = {
   register: (data) => request("/register", "POST", data),
   login: (username, password) => request("/login", "POST", { username, password }),
   requestReset: (email) => request("/request-reset", "POST", { email }),
+  verifyResetCode: (email, code) => request("/verify-reset-code", "POST", { email, code }),
   confirmReset: (data) => request("/confirm-reset", "POST", data),
   downloadBackup: (token) => request("/backup", "GET", null, token),
 };

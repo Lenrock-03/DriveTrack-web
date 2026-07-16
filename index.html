@@ -19,6 +19,7 @@
       <input id="login-password" type="password" placeholder="Passwort" autocomplete="current-password" />
       <button id="login-btn" class="primary-btn">Einloggen</button>
       <button id="show-register" class="link-btn">Noch kein Konto? Jetzt registrieren</button>
+      <button id="show-forgot" class="link-btn">Passwort vergessen?</button>
     </div>
   </div>
 
@@ -38,6 +39,35 @@
       <input id="register-password2" type="password" placeholder="Passwort wiederholen" autocomplete="new-password" />
       <button id="register-btn" class="primary-btn">Konto erstellen</button>
       <button id="show-login" class="link-btn">Schon ein Konto? Einloggen</button>
+    </div>
+  </div>
+
+  <!-- Passwort vergessen -->
+  <div id="forgot-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <h1 class="logo">DriveTrack</h1>
+      <p class="auth-subtitle">Passwort vergessen</p>
+      <div id="forgot-error" class="error-text"></div>
+
+      <div id="forgot-step-email">
+        <p class="auth-hint">Gib deine E-Mail-Adresse ein - du bekommst einen Bestätigungscode zugeschickt.</p>
+        <input id="forgot-email" placeholder="E-Mail" type="email" autocomplete="email" />
+        <button id="forgot-request-btn" class="primary-btn">Code anfordern</button>
+      </div>
+
+      <div id="forgot-step-reset" class="hidden">
+        <p class="auth-hint">
+          Trag den Code aus der E-Mail ein, dazu deinen Recovery-Code (aus der Mail von der
+          Registrierung) und dein neues Passwort.
+        </p>
+        <input id="forgot-code" placeholder="Bestätigungscode aus der Mail" />
+        <input id="forgot-recovery-code" placeholder="Recovery-Code" />
+        <input id="forgot-new-password" type="password" placeholder="Neues Passwort" autocomplete="new-password" />
+        <input id="forgot-new-password2" type="password" placeholder="Neues Passwort wiederholen" autocomplete="new-password" />
+        <button id="forgot-reset-btn" class="primary-btn">Passwort zurücksetzen</button>
+      </div>
+
+      <button id="forgot-back-btn" class="link-btn">Zurück zum Login</button>
     </div>
   </div>
 

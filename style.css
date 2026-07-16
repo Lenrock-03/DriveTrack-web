@@ -255,7 +255,7 @@ input:focus {
   width: 100%;
   height: 100%;
   background: var(--surface);
-  filter: contrast(1.25) brightness(1.05);
+  filter: contrast(1.15) brightness(1.65) saturate(1.15);
 }
 
 .car-selector {
