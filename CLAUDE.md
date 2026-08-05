@@ -61,3 +61,20 @@ ssh root@5.45.110.201 "find /var/www/drivetrack-web -type d -exec chmod 755 {} \
   zeigt Uhrzeit/km-Stand/Geschwindigkeit an der gewählten Stelle). Noch nicht umgesetzt.
 - **Automatische Synchronisation** während man eingeloggt ist (periodisches Neuladen des Backups im
   Hintergrund, z. B. per `setInterval` + Refresh bei Tab-Fokus) – angefragt, aber noch nicht gebaut.
+
+## Versionierung
+
+Seit 2026-08-05 einheitlich über alle drei Projekte (App, Backend, Web):
+
+- **Semantic Versioning** (`MAJOR.MINOR.PATCH`) – `<meta name="app-version">` in `index.html` ist
+  die einzige Quelle der Wahrheit (kein Build-Step, der eine Konstante automatisch einsetzen könnte),
+  `js/app.js` liest sie von dort und zeigt sie unter "Konto / Settings" an
+- **MAJOR**: Breaking Change am Backup-JSON-Format/Verschlüsselungsschema (betrifft dann zwangsläufig
+  auch App + Backend)
+- **MINOR**: neues Feature, abwärtskompatibel
+- **PATCH**: Bugfix, kein Verhaltensunterschied
+- Bei jedem Bump: **beide** Stellen ändern (Meta-Tag UND `CHANGELOG.md`), Git-Tag `vX.Y.Z` setzen,
+  `git push --tags`
+- Releases aktuell **manuell** per `gh release create vX.Y.Z --notes-file CHANGELOG.md` – kein
+  CI/CD dafür eingerichtet
+- Repo: `github.com/Lenrock-03/drivetrack-web`
