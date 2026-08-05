@@ -8,6 +8,20 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.1.3] - 2026-08-05
+
+### Behoben
+- Geschwindigkeits-Graph wirkte durch GPS-Ausreißer unrealistisch (isolierte Nadel-Spitzen statt
+  echtem Verlauf): Median-Filter (5-Punkte-Fenster) über die Geschwindigkeit ergänzt, entfernt
+  einzelne Ausreißer, ohne echte Beschleunigungs-/Bremstrends zu verlieren
+- Fahrt-Detail-Ansicht konnte bei kurzen Browserfenstern über den sichtbaren Bereich hinausragen
+  (Graph unten abgeschnitten) - Layout wurde korrigiert (Karte schrumpft jetzt richtig), zusätzlich
+  Scroll-Sicherheitsnetz für sehr kurze Fenster
+
+### Hinzugefügt
+- Achsenbeschriftung am Geschwindigkeits-Graph (Gitterlinien + km/h-Werte), damit sich die Skala
+  ablesen lässt
+
 ## [1.1.2] - 2026-08-05
 
 ### Behoben

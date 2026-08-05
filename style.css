@@ -282,6 +282,9 @@ input:focus {
   z-index: 2000;
   display: flex;
   flex-direction: column;
+  /* Sicherheitsnetz für kurze Fenster (wenig Höhe): lieber scrollen als dass der Graph unten aus
+     dem sichtbaren Bereich rausragt */
+  overflow-y: auto;
 }
 
 .back-btn {
@@ -315,6 +318,9 @@ input:focus {
 
 #trip-detail-map {
   flex: 1;
+  /* Ohne das schrumpft ein Flex-Kind standardmäßig nicht unter seine Inhaltsgröße - dadurch würde
+     der Graph darunter bei kurzen Fenstern aus dem sichtbaren Bereich rausgedrückt */
+  min-height: 0;
 }
 
 /* --- Geschwindigkeits-Graph (Fahrt-Detail) --- */

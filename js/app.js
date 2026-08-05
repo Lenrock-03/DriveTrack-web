@@ -360,6 +360,28 @@ function buildSpeedSeries(raw) {
   });
 }
 
+/**
+ * Median-Filter über die Geschwindigkeit (Fenster von 5 Punkten): einzelne GPS-Ausreißer (kurzer
+ * ungenauer Fix) erzeugen sonst isolierte Nadel-Spitzen statt eines realistisch wirkenden Verlaufs
+ * - der Median eines Fensters ignoriert genau solche einzelnen Ausreißer, echte Beschleunigungs-/
+ * Bremstrends bleiben erhalten. cumulativeKm/Position bleiben unverändert (die Distanz-Berechnung
+ * selbst ist von dem Rauschen nicht betroffen, nur die Momentan-Geschwindigkeit pro Segment).
+ */
+function medianFilterSpeeds(points, windowRadius = 2) {
+  const raw = points.map((p) => p.speedKmh);
+  return points.map((p, i) => {
+    const lo = Math.max(0, i - windowRadius);
+    const hi = Math.min(raw.length - 1, i + windowRadius);
+    const window = raw.slice(lo, hi + 1).sort((a, b) => a - b);
+    return { ...p, speedKmh: window[Math.floor(window.length / 2)] };
+  });
+}
+
+/** Rundet für eine lesbare Achsenbeschriftung auf ein "glattes" Vielfaches von 10 auf. */
+function niceCeilSpeed(value) {
+  return Math.max(10, Math.ceil(value / 10) * 10);
+}
+
 // --- Rendering ---
 function renderTab() {
   const trips = filteredTrips();
@@ -572,8 +594,8 @@ function renderSpeedGraph(trip) {
   const emptyHint = document.getElementById("graph-empty-hint");
   const ctx = canvas.getContext("2d");
 
-  const points = buildSpeedSeries(parseTripPointsWithTime(trip));
-  if (points.length < 2) {
+  const rawPoints = buildSpeedSeries(parseTripPointsWithTime(trip));
+  if (rawPoints.length < 2) {
     canvas.classList.add("hidden");
     chip.classList.add("hidden");
     emptyHint.classList.remove("hidden");
@@ -584,16 +606,20 @@ function renderSpeedGraph(trip) {
   chip.classList.remove("hidden");
   emptyHint.classList.add("hidden");
 
-  // Skala bewusst NICHT aus dem Maximum der selbst berechneten Segment-Geschwindigkeiten nehmen:
-  // einzelne GPS-Ausreißer (kurzer ungenauer Fix) erzeugen sonst rechnerisch absurd hohe Werte
-  // (Distanz/Zeit zwischen zwei Punkten), die die ganze Skala stauchen und den Rest der Fahrt
-  // am unteren Rand "kleben" lassen. trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
-  // deutlich robuster) und ist schon in den Stat-Kacheln zu sehen - viel verlässlicher als unsere
-  // eigene Positions-Differenz-Rechnung. Einzelne Ausreißer werden beim Zeichnen einfach oben gekappt.
+  // Median-Filter gegen einzelne GPS-Ausreißer (kurzer ungenauer Fix -> rechnerisch absurd hohe
+  // Distanz/Zeit-Geschwindigkeit) - siehe medianFilterSpeeds(). Ohne den Filter sehen solche
+  // Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen Geschwindigkeitsverlaufs aus.
+  const points = medianFilterSpeeds(rawPoints);
+
+  // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
+  // deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in den
+  // Stat-Kacheln zu sehen. scaleMax rundet das für eine lesbare Achsenbeschriftung auf.
   const maxSpeed = Math.max(1, trip.maxSpeedKmh || 0);
+  const scaleMax = niceCeilSpeed(maxSpeed);
   const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
   // Standardmäßig das Ende der Fahrt ausgewählt, wie in der App - von dort aus nach links ziehen
   let selectedIndex = points.length - 1;
+  const leftGutter = 34; // Platz links für die Achsenbeschriftung (km/h)
 
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -628,6 +654,24 @@ function renderSpeedGraph(trip) {
     const w = canvas.getBoundingClientRect().width;
     const h = canvas.getBoundingClientRect().height;
     ctx.clearRect(0, 0, w, h);
+    const plotW = Math.max(1, w - leftGutter);
+
+    // Gitterlinien + Achsenbeschriftung (0 / 1/3 / 2/3 / voll), damit sich die Skala ablesen lässt
+    ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    [0, 1 / 3, 2 / 3, 1].forEach((frac) => {
+      const y = h - frac * h;
+      const value = Math.round(scaleMax * frac);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftGutter, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(237, 224, 212, 0.55)";
+      ctx.fillText(`${value}`, leftGutter - 6, Math.min(h - 6, Math.max(7, y)));
+    });
 
     ctx.strokeStyle = "#ff7a1a";
     ctx.lineWidth = 2.5;
@@ -635,16 +679,16 @@ function renderSpeedGraph(trip) {
     ctx.lineJoin = "round";
     ctx.beginPath();
     points.forEach((p, i) => {
-      const x = (p.offsetSeconds / totalDuration) * w;
-      const y = h - Math.min(1, p.speedKmh / maxSpeed) * h;
+      const x = leftGutter + (p.offsetSeconds / totalDuration) * plotW;
+      const y = h - Math.min(1, p.speedKmh / scaleMax) * h;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
 
     const sel = points[selectedIndex];
-    const selX = (sel.offsetSeconds / totalDuration) * w;
-    const selY = h - Math.min(1, sel.speedKmh / maxSpeed) * h;
+    const selX = leftGutter + (sel.offsetSeconds / totalDuration) * plotW;
+    const selY = h - Math.min(1, sel.speedKmh / scaleMax) * h;
 
     ctx.save();
     ctx.strokeStyle = "rgba(237, 224, 212, 0.35)";
@@ -669,7 +713,8 @@ function renderSpeedGraph(trip) {
 
   function selectAtClientX(clientX) {
     const rect = canvas.getBoundingClientRect();
-    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const plotW = Math.max(1, rect.width - leftGutter);
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left - leftGutter) / plotW));
     selectedIndex = Math.min(points.length - 1, Math.max(0, Math.round(fraction * (points.length - 1))));
     updateChip();
     updateMapMarker();
