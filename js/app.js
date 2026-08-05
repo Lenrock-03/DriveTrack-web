@@ -584,9 +584,13 @@ function renderSpeedGraph(trip) {
   chip.classList.remove("hidden");
   emptyHint.classList.add("hidden");
 
-  // Kein Math.max(...array) hier - siehe Kommentar in drawRouteThumbnail() weiter oben.
-  let maxSpeed = 1;
-  points.forEach((p) => { if (p.speedKmh > maxSpeed) maxSpeed = p.speedKmh; });
+  // Skala bewusst NICHT aus dem Maximum der selbst berechneten Segment-Geschwindigkeiten nehmen:
+  // einzelne GPS-Ausreißer (kurzer ungenauer Fix) erzeugen sonst rechnerisch absurd hohe Werte
+  // (Distanz/Zeit zwischen zwei Punkten), die die ganze Skala stauchen und den Rest der Fahrt
+  // am unteren Rand "kleben" lassen. trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
+  // deutlich robuster) und ist schon in den Stat-Kacheln zu sehen - viel verlässlicher als unsere
+  // eigene Positions-Differenz-Rechnung. Einzelne Ausreißer werden beim Zeichnen einfach oben gekappt.
+  const maxSpeed = Math.max(1, trip.maxSpeedKmh || 0);
   const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
   // Standardmäßig das Ende der Fahrt ausgewählt, wie in der App - von dort aus nach links ziehen
   let selectedIndex = points.length - 1;
@@ -632,7 +636,7 @@ function renderSpeedGraph(trip) {
     ctx.beginPath();
     points.forEach((p, i) => {
       const x = (p.offsetSeconds / totalDuration) * w;
-      const y = h - (p.speedKmh / maxSpeed) * h;
+      const y = h - Math.min(1, p.speedKmh / maxSpeed) * h;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
@@ -640,7 +644,7 @@ function renderSpeedGraph(trip) {
 
     const sel = points[selectedIndex];
     const selX = (sel.offsetSeconds / totalDuration) * w;
-    const selY = h - (sel.speedKmh / maxSpeed) * h;
+    const selY = h - Math.min(1, sel.speedKmh / maxSpeed) * h;
 
     ctx.save();
     ctx.strokeStyle = "rgba(237, 224, 212, 0.35)";
