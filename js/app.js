@@ -253,6 +253,10 @@ document.getElementById("settings-reload-btn").addEventListener("click", async (
 });
 
 document.getElementById("settings-username-label").textContent = "";
+// Einzige Quelle der Wahrheit für die Versionsnummer ist der <meta name="app-version">-Tag in
+// index.html (kein Build-Step hier, der eine Konstante an mehreren Stellen einsetzen könnte).
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "?";
+document.getElementById("settings-version-label").textContent = `Version ${APP_VERSION}`;
 document.getElementById("settings-btn").addEventListener("click", () => {
   document.getElementById("settings-username-label").textContent =
     `Eingeloggt als "${session?.username || ""}"`;
