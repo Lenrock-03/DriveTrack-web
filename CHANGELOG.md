@@ -8,6 +8,11 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.2.1] - 2026-08-05
+
+### Hinzugefügt
+- Favicon (`favicon.svg`) – spiegelt das Android-App-Icon 1:1 (weißes Auto auf `#FF7A1A`)
+
 ## [1.2.0] - 2026-08-05
 
 ### Hinzugefügt

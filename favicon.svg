@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- Spiegelt das Android-App-Icon 1:1 (app/src/main/res/drawable/ic_launcher_foreground.xml +
+       ic_launcher_background.xml) - weißes Auto-Silhouette auf der App-Akzentfarbe #FF7A1A,
+       die auch hier in style.css als --primary verwendet wird. -->
+  <rect width="108" height="108" fill="#FF7A1A" />
+  <path
+    fill="#FFFFFF"
+    d="M32,58 L36,44 C37,41 40,39 43,39 L65,39 C68,39 71,41 72,44 L76,58 L76,74 C76,76 74,78 72,78 L70,78 C68,78 66,76 66,74 L66,72 L42,72 L42,74 C42,76 40,78 38,78 L36,78 C34,78 32,76 32,74 Z M39,50 L37,58 L71,58 L69,50 C68.5,48.5 67,47 65,47 L43,47 C41,47 39.5,48.5 39,50 Z" />
+  <circle cx="40" cy="64" r="4" fill="#FF7A1A" />
+  <circle cx="68" cy="64" r="4" fill="#FF7A1A" />
+</svg>
