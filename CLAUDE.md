@@ -24,7 +24,9 @@ index.html          Alle Screens als einzelne divs (login/register/forgot/unlock
 style.css            Dunkles Theme, orange Akzentfarbe (#ff7a1a) – an die Android-App angelehnt
 js/crypto.js         PBKDF2 + AES-256-GCM über die Web Crypto API, spiegelt ServerCrypto.kt 1:1
 js/api.js            Fetch-Wrapper für die Backend-Endpunkte
-js/app.js            Komplette UI-Logik, State, Leaflet-Karten-Rendering
+js/app.js            Komplette UI-Logik, State, Leaflet-Karten-Rendering, Geschwindigkeits-Graph
+                     (Canvas, `buildSpeedSeries()`/`renderSpeedGraph()` – spiegelt `SpeedGraph()`
+                     aus `TripDetailScreen.kt` der App 1:1, gleiche Haversine-Formel)
 ```
 
 Karten: **Leaflet.js** (über CDN eingebunden) statt osmdroid, gleiche CartoDB-Dark-Matter-Kacheln wie
@@ -56,9 +58,8 @@ ssh root@5.45.110.201 "find /var/www/drivetrack-web -type d -exec chmod 755 {} \
 ## Noch offen / geplant
 
 - **Fahrt-Detail-Ansicht umbauen**: Stats sollen vertikal am linken Rand stehen (statt der aktuellen
-  4er-Grid-Reihe oben), darunter/dahinter ein interaktiver Geschwindigkeit/Zeit-Graph wie in der
-  Android-App (`SpeedGraph` in `TripDetailScreen.kt` dort als Vorbild – Canvas-basiert, ziehbarer Punkt,
-  zeigt Uhrzeit/km-Stand/Geschwindigkeit an der gewählten Stelle). Noch nicht umgesetzt.
+  4er-Grid-Reihe oben), der Geschwindigkeits-Graph (siehe unten, seit v1.1.0 vorhanden) davor/danach
+  statt als eigener Abschnitt unter der Karte. Layout-Umbau selbst noch nicht umgesetzt.
 - **Automatische Synchronisation** während man eingeloggt ist (periodisches Neuladen des Backups im
   Hintergrund, z. B. per `setInterval` + Refresh bei Tab-Fokus) – angefragt, aber noch nicht gebaut.
 
