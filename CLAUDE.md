@@ -60,8 +60,13 @@ ssh root@5.45.110.201 "find /var/www/drivetrack-web -type d -exec chmod 755 {} \
 - **Fahrt-Detail-Ansicht umbauen**: Stats sollen vertikal am linken Rand stehen (statt der aktuellen
   4er-Grid-Reihe oben), der Geschwindigkeits-Graph (siehe unten, seit v1.1.0 vorhanden) davor/danach
   statt als eigener Abschnitt unter der Karte. Layout-Umbau selbst noch nicht umgesetzt.
-- **Automatische Synchronisation** während man eingeloggt ist (periodisches Neuladen des Backups im
-  Hintergrund, z. B. per `setInterval` + Refresh bei Tab-Fokus) – angefragt, aber noch nicht gebaut.
+## Auto-Refresh (seit v1.2.0)
+
+`loadAndRenderBackup()` läuft automatisch alle 60s (`AUTO_REFRESH_INTERVAL_MS`) im Hintergrund
+sowie sofort beim Zurückwechseln in den Tab (`visibilitychange`), passend zum automatischen Sync
+der App (seit App 0.3.0). Nur aktiv, wenn eingeloggt+entsperrt UND man gerade auf Home/Fahrten ist
+(`canAutoRefreshNow()`) – bewusst NICHT in der Fahrt-Detail- oder Settings-Ansicht, damit kein
+Reload mitten in einer Interaktion die Ansicht wegreißt.
 
 ## Versionierung
 

@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.2.0] - 2026-08-05
+
+### Hinzugefügt
+- Automatisches Neuladen des Backups alle 60s im Hintergrund + sofort beim Zurückwechseln in den
+  Tab, passend zum automatischen Sync der App (App 0.3.0). Nur aktiv wenn eingeloggt+entsperrt und
+  nicht gerade in der Fahrt-Detail-/Settings-Ansicht.
+
 ## [1.1.3] - 2026-08-05
 
 ### Behoben

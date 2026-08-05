@@ -749,4 +749,27 @@ document.getElementById("trip-detail-back").addEventListener("click", () => {
   setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
 });
 
+// --- Automatische Synchronisation ---
+// Die App synchronisiert seit 0.3.0 selbst automatisch nach jeder Fahrt - hier holen wir uns
+// periodisch die neuesten Daten ab, damit man sie nicht erst per Hand "neu laden" muss. Nur
+// solange eingeloggt+entsperrt (dek gesetzt), sonst macht loadAndRenderBackup() eh nichts.
+// Läuft bewusst NICHT, während man gerade in der Fahrt-Detail- oder Settings-Ansicht ist, damit
+// kein Reload mitten in einer Interaktion die Ansicht wegreißt.
+const AUTO_REFRESH_INTERVAL_MS = 60_000;
+
+function canAutoRefreshNow() {
+  return Boolean(session && dek) && (screens.detail.classList.contains("hidden")) &&
+    (screens.settings.classList.contains("hidden"));
+}
+
+setInterval(() => {
+  if (canAutoRefreshNow()) loadAndRenderBackup();
+}, AUTO_REFRESH_INTERVAL_MS);
+
+// Sofort neu laden, wenn man in den Tab zurückwechselt (z. B. nachdem man am Handy gerade eine
+// Fahrt beendet hat) - fühlt sich responsiver an als auf das nächste 60s-Intervall zu warten.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && canAutoRefreshNow()) loadAndRenderBackup();
+});
+
 boot();
