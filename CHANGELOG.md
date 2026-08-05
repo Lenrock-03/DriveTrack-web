@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.1.0] - 2026-08-05
+
+### Hinzugefügt
+- Interaktiver Geschwindigkeits-Graph in der Fahrt-Detail-Ansicht (Canvas, ziehbarer/tippbarer
+  Punkt zeigt Uhrzeit/km-Stand/Geschwindigkeit, Marker wandert dabei auf der Karte mit) –
+  spiegelt `SpeedGraph` aus der Android-App
+
 ## [1.0.0] - 2026-08-05
 
 Erster versionierter Stand der bereits produktiv laufenden Web-App

@@ -12,6 +12,8 @@ let currentTab = "home";
 let mainMap = null;
 let mainMapLayers = [];
 let detailMap = null;
+let graphScrubMarker = null; // Leaflet-Marker auf detailMap, zeigt die im Graph gewählte Position
+let currentGraphRedraw = null; // Redraw-Funktion der gerade offenen Fahrt, für den globalen Resize-Handler
 
 // --- Session-Verwaltung (localStorage: nur Token/Salt/verpackter DEK, nie Passwort/DEK selbst) ---
 function loadSession() {
@@ -306,6 +308,58 @@ function parseTripPoints(trip) {
   }
 }
 
+function parseTripPointsWithTime(trip) {
+  try {
+    const arr = JSON.parse(trip.gpxTrackJson);
+    return arr.map((p) => ({ lat: p.lat, lon: p.lon, ts: p.ts }));
+  } catch (e) {
+    return [];
+  }
+}
+
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+function segmentSpeedKmh(p1, p2) {
+  const dtSeconds = (p2.ts - p1.ts) / 1000;
+  if (dtSeconds <= 0) return 0;
+  return (haversineMeters(p1, p2) / dtSeconds) * 3.6;
+}
+
+/**
+ * Spiegelt Trip.toSpeedSeries() aus der Android-App: baut aus den rohen GPS-Punkten (lat, lon, ts)
+ * eine Zeit/Geschwindigkeit/Distanz-Serie für den Graphen.
+ */
+function buildSpeedSeries(raw) {
+  if (raw.length < 2) return [];
+  const startTs = raw[0].ts;
+  let cumulativeMeters = 0;
+  return raw.map((p, i) => {
+    let speedKmh;
+    if (i === 0) {
+      speedKmh = segmentSpeedKmh(raw[0], raw[1]);
+    } else {
+      cumulativeMeters += haversineMeters(raw[i - 1], p);
+      speedKmh = segmentSpeedKmh(raw[i - 1], p);
+    }
+    return {
+      offsetSeconds: (p.ts - startTs) / 1000,
+      speedKmh,
+      cumulativeKm: cumulativeMeters / 1000,
+      timestamp: p.ts,
+      lat: p.lat,
+      lon: p.lon,
+    };
+  });
+}
+
 // --- Rendering ---
 function renderTab() {
   const trips = filteredTrips();
@@ -482,6 +536,7 @@ function openTripDetail(trip) {
       detailMap.eachLayer((layer) => {
         if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) detailMap.removeLayer(layer);
       });
+      graphScrubMarker = null; // wurde durch die Zeile oben mit entfernt, Referenz nicht mehr gültig
     }
 
     const points = parseTripPoints(trip);
@@ -492,8 +547,142 @@ function openTripDetail(trip) {
       detailMap.fitBounds(points, { padding: [30, 30] });
     }
     detailMap.invalidateSize();
+
+    renderSpeedGraph(trip);
   }, 50);
 }
+
+/**
+ * Zeichnet den Geschwindigkeits-Graphen für die aktuell geöffnete Fahrt und richtet Ziehen/Tippen
+ * zum Scrubben ein (Uhrzeit/km-Stand/Speed an der gewählten Stelle, Marker wandert auf detailMap mit).
+ * Spiegelt SpeedGraph() aus TripDetailScreen.kt der Android-App.
+ */
+function renderSpeedGraph(trip) {
+  const canvas = document.getElementById("speed-graph-canvas");
+  const chip = document.getElementById("graph-info-chip");
+  const emptyHint = document.getElementById("graph-empty-hint");
+  const ctx = canvas.getContext("2d");
+
+  const points = buildSpeedSeries(parseTripPointsWithTime(trip));
+  if (points.length < 2) {
+    canvas.classList.add("hidden");
+    chip.classList.add("hidden");
+    emptyHint.classList.remove("hidden");
+    currentGraphRedraw = null;
+    return;
+  }
+  canvas.classList.remove("hidden");
+  chip.classList.remove("hidden");
+  emptyHint.classList.add("hidden");
+
+  const maxSpeed = Math.max(1, ...points.map((p) => p.speedKmh));
+  const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
+  // Standardmäßig das Ende der Fahrt ausgewählt, wie in der App - von dort aus nach links ziehen
+  let selectedIndex = points.length - 1;
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function updateChip() {
+    const p = points[selectedIndex];
+    const time = new Date(p.timestamp).toLocaleTimeString("de-DE");
+    chip.innerHTML =
+      `<span>🕐 ${time}</span>` +
+      `<span>📍 ${p.cumulativeKm.toFixed(2)} km</span>` +
+      `<span>⚡ ${Math.round(p.speedKmh)} km/h</span>`;
+  }
+
+  function updateMapMarker() {
+    if (!detailMap) return;
+    const p = points[selectedIndex];
+    if (!graphScrubMarker) {
+      graphScrubMarker = L.circleMarker([p.lat, p.lon], {
+        radius: 8, color: "#fff", weight: 2, fillColor: "#ff7a1a", fillOpacity: 1,
+      }).addTo(detailMap);
+    } else {
+      graphScrubMarker.setLatLng([p.lat, p.lon]);
+    }
+  }
+
+  function draw() {
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = (p.offsetSeconds / totalDuration) * w;
+      const y = h - (p.speedKmh / maxSpeed) * h;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    const sel = points[selectedIndex];
+    const selX = (sel.offsetSeconds / totalDuration) * w;
+    const selY = h - (sel.speedKmh / maxSpeed) * h;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(237, 224, 212, 0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(selX, 0);
+    ctx.lineTo(selX, h);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.stroke();
+  }
+
+  function selectAtClientX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    selectedIndex = Math.min(points.length - 1, Math.max(0, Math.round(fraction * (points.length - 1))));
+    updateChip();
+    updateMapMarker();
+    draw();
+  }
+
+  let dragging = false;
+  canvas.onpointerdown = (e) => {
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    selectAtClientX(e.clientX);
+  };
+  canvas.onpointermove = (e) => {
+    if (!dragging) return;
+    selectAtClientX(e.clientX);
+  };
+  canvas.onpointerup = () => { dragging = false; };
+  canvas.onpointercancel = () => { dragging = false; };
+
+  currentGraphRedraw = () => { resizeCanvas(); draw(); };
+  resizeCanvas();
+  updateChip();
+  updateMapMarker();
+  draw();
+}
+
+// Ein einziger globaler Resize-Handler statt pro Fahrt-Öffnung einen neuen anzuhängen (kein Leak)
+window.addEventListener("resize", () => { if (currentGraphRedraw) currentGraphRedraw(); });
 
 document.getElementById("trip-detail-back").addEventListener("click", () => {
   showScreen("main");
