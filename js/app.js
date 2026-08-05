@@ -437,10 +437,17 @@ function drawRouteThumbnail(canvas, points) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (points.length < 2) return;
 
-  const lats = points.map((p) => p[0]);
-  const lons = points.map((p) => p[1]);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  // Kein Math.min(...array)/Math.max(...array) hier: bei Fahrten mit vielen tausend GPS-Punkten
+  // (ganztägige Fahrten) sprengt das den JS-Aufrufstack (RangeError) und die Funktion bricht ab,
+  // bevor irgendwas gezeichnet wird - dieselbe Größenordnung an Punkten, die schon in der Android-App
+  // die SQLiteBlobTooBigException verursacht hat (siehe CLAUDE.md).
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  points.forEach(([lat, lon]) => {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+  });
   const latRange = Math.max(maxLat - minLat, 0.00001);
   const lonRange = Math.max(maxLon - minLon, 0.00001);
   const pad = 6;
@@ -492,7 +499,9 @@ function renderMainMap(trips) {
     if (points.length < 2) return;
     const line = L.polyline(points, { color: "#ff7a1a", weight: 4, opacity: 0.85 }).addTo(mainMap);
     mainMapLayers.push(line);
-    allPoints.push(...points);
+    // kein allPoints.push(...points) - gleiches Stack-Limit-Problem wie bei Math.max(...array)
+    // oben, bei vielen tausend Punkten (lange Fahrten) über mehrere Trips hinweg gesammelt
+    points.forEach((p) => allPoints.push(p));
   });
 
   if (allPoints.length > 0) {
@@ -575,7 +584,9 @@ function renderSpeedGraph(trip) {
   chip.classList.remove("hidden");
   emptyHint.classList.add("hidden");
 
-  const maxSpeed = Math.max(1, ...points.map((p) => p.speedKmh));
+  // Kein Math.max(...array) hier - siehe Kommentar in drawRouteThumbnail() weiter oben.
+  let maxSpeed = 1;
+  points.forEach((p) => { if (p.speedKmh > maxSpeed) maxSpeed = p.speedKmh; });
   const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
   // Standardmäßig das Ende der Fahrt ausgewählt, wie in der App - von dort aus nach links ziehen
   let selectedIndex = points.length - 1;

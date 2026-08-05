@@ -8,6 +8,15 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.1.1] - 2026-08-05
+
+### Behoben
+- Geschwindigkeits-Graph blieb bei Fahrten mit vielen tausend GPS-Punkten komplett leer (auch die
+  kleinen Routen-Vorschaubilder in der Fahrtenliste und die Hauptkarte waren betroffen): `Math.max(
+  ...array)` / `array.push(...array)` sprengen bei sehr großen Arrays den JS-Aufrufstack
+  (`RangeError`), wodurch die jeweilige Funktion lautlos abbricht, bevor irgendwas gezeichnet wird.
+  Ersetzt durch schleifenbasierte Berechnung ohne Argumentzahl-Limit.
+
 ## [1.1.0] - 2026-08-05
 
 ### Hinzugefügt
