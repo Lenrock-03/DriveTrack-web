@@ -8,6 +8,16 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.5.0] - 2026-08-06
+
+### Hinzugefügt
+- Routen-Linie in der Fahrt-Detail-Karte kann jetzt nach Geschwindigkeit eingefärbt werden
+  (grün = langsam, rot = schnell) statt der einheitlichen orangenen Farbe – Auswahlmenü oben
+  rechts auf der Karte, spiegelt dieselbe Funktion in der App (0.4.0). Bei sehr langen Fahrten
+  werden die Segmente auf max. 1500 heruntergesampelt, die Karte nutzt jetzt außerdem Leaflets
+  Canvas-Renderer (`preferCanvas`) statt SVG für flüssigeres Rendering vieler Segmente. Präferenz
+  bleibt über `localStorage` erhalten.
+
 ## [1.4.1] - 2026-08-06
 
 ### Behoben

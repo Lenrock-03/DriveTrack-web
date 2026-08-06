@@ -14,6 +14,8 @@ let mainMapLayers = [];
 let detailMap = null;
 let graphScrubMarker = null; // Leaflet-Marker auf detailMap, zeigt die im Graph gewählte Position
 let currentGraphRedraw = null; // Redraw-Funktion der gerade offenen Fahrt, für den globalen Resize-Handler
+let currentDetailTrip = null; // Fahrt der gerade offenen Detail-Ansicht, für den Farbmodus-Umschalter
+let routeLineLayers = []; // Aktuell auf detailMap gezeichnete Routen-Layer (Linie(n) + Hover-Trefferfläche)
 
 // --- Session-Verwaltung (localStorage: nur Token/Salt/verpackter DEK, nie Passwort/DEK selbst) ---
 function loadSession() {
@@ -550,6 +552,61 @@ function renderMainMap(trips) {
 }
 
 // --- Fahrt-Detail ---
+// Obergrenze für Geschwindigkeits-Segmente auf der Route: bei sehr langen Fahrten (viele tausend
+// GPS-Punkte) würde ein Leaflet-Layer pro Segment das Rendering spürbar verlangsamen - deshalb wird
+// bei Bedarf heruntergesampelt (siehe renderRouteLine()).
+const MAX_ROUTE_COLOR_SEGMENTS = 1500;
+
+/** Grün (langsam) -> Rot (schnell), analog zur Achse des Geschwindigkeits-Graphen. */
+function speedToColor(speedKmh, scaleMax) {
+  const fraction = Math.min(1, Math.max(0, speedKmh / scaleMax));
+  const hue = 120 * (1 - fraction);
+  return `hsl(${hue}, 85%, 50%)`;
+}
+
+/**
+ * Zeichnet die Routen-Linie(n) auf der Detail-Karte neu, je nach gewähltem Anzeigemodus
+ * (Standard-Farbe oder nach Geschwindigkeit eingefärbt). Entfernt vorher die zuvor gezeichnete(n)
+ * Linie(n), lässt Start-/Ziel-Marker und den Graph-Scrub-Marker aber unangetastet.
+ */
+function renderRouteLine(trip, points) {
+  routeLineLayers.forEach((l) => detailMap.removeLayer(l));
+  routeLineLayers = [];
+
+  const mode = document.getElementById("route-color-mode").value;
+  let hoverLine;
+
+  if (mode === "speed") {
+    const series = getTripSpeedSeries(trip);
+    if (series.length >= 2) {
+      const scaleMax = niceCeilSpeed(Math.max(1, trip.maxSpeedKmh || 0));
+      const step = Math.max(1, Math.ceil((series.length - 1) / MAX_ROUTE_COLOR_SEGMENTS));
+      let i = 0;
+      while (i < series.length - 1) {
+        const end = Math.min(i + step, series.length - 1);
+        const segPoints = [];
+        let speedSum = 0;
+        for (let j = i; j <= end; j++) {
+          segPoints.push([series[j].lat, series[j].lon]);
+          speedSum += series[j].speedKmh;
+        }
+        const avgSpeed = speedSum / (end - i + 1);
+        const segment = L.polyline(segPoints, { color: speedToColor(avgSpeed, scaleMax), weight: 5 }).addTo(detailMap);
+        routeLineLayers.push(segment);
+        i = end;
+      }
+    }
+    // Unsichtbare, breitere Linie über die vollen (nicht heruntergesampelten) Punkte - dient nur
+    // dem zuverlässigen Hover/Tap, unabhängig vom Anzeigemodus dieselbe Interaktion.
+    hoverLine = L.polyline(points, { opacity: 0, weight: 16 }).addTo(detailMap);
+  } else {
+    hoverLine = L.polyline(points, { color: "#ff7a1a", weight: 5 }).addTo(detailMap);
+  }
+
+  routeLineLayers.push(hoverLine);
+  setupRouteHover(hoverLine, trip);
+}
+
 /**
  * Bindet ein Tooltip an die Routen-Linie auf der Detail-Karte: beim Hovern (Maus) bzw.
  * Antippen (Touch, via Leaflet automatisch) zeigt es Uhrzeit/km-Stand/Geschwindigkeit des
@@ -608,11 +665,13 @@ function openTripDetail(trip) {
 
   showScreen("detail");
   applyGraphCollapsedState();
+  applyRouteColorModeSelection();
+  currentDetailTrip = trip;
 
   // Karte erst nach dem Sichtbarwerden initialisieren (Leaflet braucht sichtbare Größe)
   setTimeout(() => {
     if (!detailMap) {
-      detailMap = L.map("trip-detail-map", { zoomControl: true });
+      detailMap = L.map("trip-detail-map", { zoomControl: true, preferCanvas: true });
       L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
         subdomains: "abcd",
         maxZoom: 20,
@@ -623,15 +682,15 @@ function openTripDetail(trip) {
         if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) detailMap.removeLayer(layer);
       });
       graphScrubMarker = null; // wurde durch die Zeile oben mit entfernt, Referenz nicht mehr gültig
+      routeLineLayers = []; // dito - die Referenzen zeigen jetzt auf bereits entfernte Layer
     }
 
     const points = parseTripPoints(trip);
     if (points.length >= 2) {
-      const routeLine = L.polyline(points, { color: "#ff7a1a", weight: 5 }).addTo(detailMap);
+      renderRouteLine(trip, points);
       L.circleMarker(points[0], { radius: 7, color: "#fff", fillColor: "#43a047", fillOpacity: 1, weight: 2 }).addTo(detailMap);
       L.circleMarker(points[points.length - 1], { radius: 7, color: "#fff", fillColor: "#212121", fillOpacity: 1, weight: 2 }).addTo(detailMap);
       detailMap.fitBounds(points, { padding: [30, 30] });
-      setupRouteHover(routeLine, trip);
     }
     detailMap.invalidateSize();
 
@@ -800,6 +859,7 @@ window.addEventListener("resize", () => { if (currentGraphRedraw) currentGraphRe
 
 document.getElementById("trip-detail-back").addEventListener("click", () => {
   showScreen("main");
+  currentDetailTrip = null;
   setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
 });
 
@@ -823,6 +883,19 @@ document.getElementById("graph-toggle-btn").addEventListener("click", () => {
   // der Container per CSS größer wird - ohne invalidateSize() bleiben Kacheln grau/abgeschnitten.
   // setTimeout, damit das Layout (Graph ein-/ausgeblendet) erst fertig reflowed ist.
   setTimeout(() => { if (detailMap) detailMap.invalidateSize(); }, 50);
+});
+
+// --- Routen-Farbmodus (Standard-Farbe / nach Geschwindigkeit) ---
+// Präferenz bleibt über localStorage erhalten, gilt für alle Fahrten (nicht pro Fahrt gespeichert).
+const ROUTE_COLOR_MODE_KEY = "drivetrack_route_color_mode";
+function applyRouteColorModeSelection() {
+  document.getElementById("route-color-mode").value = localStorage.getItem(ROUTE_COLOR_MODE_KEY) || "standard";
+}
+document.getElementById("route-color-mode").addEventListener("change", (e) => {
+  localStorage.setItem(ROUTE_COLOR_MODE_KEY, e.target.value);
+  if (currentDetailTrip && detailMap) {
+    renderRouteLine(currentDetailTrip, parseTripPoints(currentDetailTrip));
+  }
 });
 
 // --- Automatische Synchronisation ---

@@ -60,6 +60,18 @@ ssh root@5.45.110.201 "find /var/www/drivetrack-web -type d -exec chmod 755 {} \
 - **Fahrt-Detail-Ansicht umbauen**: Stats sollen vertikal am linken Rand stehen (statt der aktuellen
   4er-Grid-Reihe oben), der Geschwindigkeits-Graph (siehe unten, seit v1.1.0 vorhanden) davor/danach
   statt als eigener Abschnitt unter der Karte. Layout-Umbau selbst noch nicht umgesetzt.
+
+## Routen-Farbmodus (seit v1.5.0)
+
+Auswahlmenü oben rechts auf der Fahrt-Detail-Karte (`#route-color-mode`): "Standard" (einheitliche
+orangene Linie) oder "Nach Geschwindigkeit" (grün→rot, `speedToColor()`). Bei Geschwindigkeit
+zeichnet `renderRouteLine()` die Route als mehrere kurze `L.polyline`-Segmente (max.
+`MAX_ROUTE_COLOR_SEGMENTS` = 1500, sonst zu viele Layer bei langen Fahrten) plus eine unsichtbare,
+breitere Linie über die vollen Punkte nur fürs Hover/Tap (`setupRouteHover()` bleibt unverändert).
+Präferenz bleibt über `localStorage` erhalten. Die Detail-Karte nutzt seitdem `preferCanvas: true`
+(Leaflet rendert Vektor-Layer dann per Canvas statt SVG-DOM-Knoten – deutlich flüssiger bei vielen
+Segmenten). Spiegelt sich 1:1 in der App (`RouteColorMode`/`speedToColor()` in `TripDetailScreen.kt`).
+
 ## Auto-Refresh (seit v1.2.0)
 
 `loadAndRenderBackup()` läuft automatisch alle 60s (`AUTO_REFRESH_INTERVAL_MS`) im Hintergrund

@@ -316,11 +316,29 @@ input:focus {
   margin-bottom: 16px;
 }
 
-#trip-detail-map {
+.detail-map-wrap {
+  position: relative;
   flex: 1;
   /* Ohne das schrumpft ein Flex-Kind standardmäßig nicht unter seine Inhaltsgröße - dadurch würde
      der Graph darunter bei kurzen Fenstern aus dem sichtbaren Bereich rausgedrückt */
   min-height: 0;
+}
+
+.route-color-selector {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  /* über Leaflets eigenen Panes/Controls (deren z-index geht bis 1000) */
+  z-index: 1100;
+}
+.route-color-selector select {
+  background: var(--surface-variant);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 9px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 /* --- Geschwindigkeits-Graph (Fahrt-Detail) --- */
