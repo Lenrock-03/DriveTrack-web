@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.4.1] - 2026-08-06
+
+### Behoben
+- Karte wurde beim Ein-/Ausblenden des Graphen nicht wirklich größer/kleiner: Leaflet passt die
+  Kartengröße nicht automatisch an, nur weil der Container per CSS wächst - `invalidateSize()`
+  nach dem Umschalten ergänzt, damit die Karte den frei werdenden Platz tatsächlich ausfüllt.
+
 ## [1.4.0] - 2026-08-06
 
 ### Hinzugefügt

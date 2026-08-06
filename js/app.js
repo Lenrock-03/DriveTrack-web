@@ -819,6 +819,10 @@ document.getElementById("graph-toggle-btn").addEventListener("click", () => {
   // Canvas hatte während des Ausgeblendetseins Breite/Höhe 0 - beim erneuten Einblenden neu
   // vermessen und zeichnen, sonst bleibt es leer.
   if (wasCollapsed && currentGraphRedraw) currentGraphRedraw();
+  // Leaflet merkt sich die Kartengröße selbst und füllt neuen Platz NICHT automatisch, nur weil
+  // der Container per CSS größer wird - ohne invalidateSize() bleiben Kacheln grau/abgeschnitten.
+  // setTimeout, damit das Layout (Graph ein-/ausgeblendet) erst fertig reflowed ist.
+  setTimeout(() => { if (detailMap) detailMap.invalidateSize(); }, 50);
 });
 
 // --- Automatische Synchronisation ---
