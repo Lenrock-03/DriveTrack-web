@@ -358,6 +358,29 @@ input:focus {
   cursor: pointer;
 }
 
+/* Hover-Tooltip auf der Routen-Linie in der Fahrt-Detail-Karte */
+.route-hover-tooltip {
+  background: var(--surface-variant);
+  color: var(--text);
+  border: none;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.route-hover-tooltip::before {
+  border-top-color: var(--surface-variant);
+}
+.route-hover-time {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.route-hover-stats {
+  display: flex;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
 .settings-card {
   margin: 40px auto;
 }

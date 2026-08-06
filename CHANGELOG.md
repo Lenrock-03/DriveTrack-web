@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.3.0] - 2026-08-06
+
+### Hinzugefügt
+- Hover-Tooltip auf der Routen-Linie in der Fahrt-Detail-Karte: zeigt Uhrzeit/km-Stand/
+  Geschwindigkeit des nächstgelegenen Punkts, dieselbe Serie wie der Geschwindigkeits-Graph
+  darunter (gemeinsam über neue `getTripSpeedSeries()`-Hilfsfunktion)
+
 ## [1.2.3] - 2026-08-06
 
 ### Geändert

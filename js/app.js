@@ -382,6 +382,16 @@ function niceCeilSpeed(value) {
   return Math.max(10, Math.ceil(value / 10) * 10);
 }
 
+/**
+ * Gemeinsame Zeit/Geschwindigkeit/Distanz-Serie für eine Fahrt (median-gefiltert), damit der
+ * Geschwindigkeits-Graph und das Hover auf der Routen-Linie exakt dieselben Werte anzeigen.
+ */
+function getTripSpeedSeries(trip) {
+  const rawPoints = buildSpeedSeries(parseTripPointsWithTime(trip));
+  if (rawPoints.length < 2) return [];
+  return medianFilterSpeeds(rawPoints);
+}
+
 // --- Rendering ---
 function renderTab() {
   const trips = filteredTrips();
@@ -540,6 +550,42 @@ function renderMainMap(trips) {
 }
 
 // --- Fahrt-Detail ---
+/**
+ * Bindet ein Tooltip an die Routen-Linie auf der Detail-Karte: beim Hovern (Maus) bzw.
+ * Antippen (Touch, via Leaflet automatisch) zeigt es Uhrzeit/km-Stand/Geschwindigkeit des
+ * nächstgelegenen Punkts - dieselbe Serie wie der Geschwindigkeits-Graph darunter.
+ */
+function setupRouteHover(line, trip) {
+  const series = getTripSpeedSeries(trip);
+  if (series.length < 2) return;
+
+  line.bindTooltip("", {
+    sticky: true,
+    direction: "top",
+    offset: [0, -8],
+    opacity: 0.95,
+    className: "route-hover-tooltip",
+  });
+
+  line.on("mousemove", (e) => {
+    let bestIndex = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < series.length; i++) {
+      const d = haversineMeters({ lat: e.latlng.lat, lon: e.latlng.lng }, series[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIndex = i;
+      }
+    }
+    const p = series[bestIndex];
+    const time = new Date(p.timestamp).toLocaleTimeString("de-DE");
+    line.setTooltipContent(
+      `<div class="route-hover-time">🕐 ${time}</div>` +
+      `<div class="route-hover-stats"><span>📍 ${p.cumulativeKm.toFixed(2)} km</span><span>⚡ ${Math.round(p.speedKmh)} km/h</span></div>`
+    );
+  });
+}
+
 function openTripDetail(trip) {
   const dateStr = new Date(trip.startTimestamp).toLocaleDateString("de-DE", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
@@ -580,10 +626,11 @@ function openTripDetail(trip) {
 
     const points = parseTripPoints(trip);
     if (points.length >= 2) {
-      L.polyline(points, { color: "#ff7a1a", weight: 5 }).addTo(detailMap);
+      const routeLine = L.polyline(points, { color: "#ff7a1a", weight: 5 }).addTo(detailMap);
       L.circleMarker(points[0], { radius: 7, color: "#fff", fillColor: "#43a047", fillOpacity: 1, weight: 2 }).addTo(detailMap);
       L.circleMarker(points[points.length - 1], { radius: 7, color: "#fff", fillColor: "#212121", fillOpacity: 1, weight: 2 }).addTo(detailMap);
       detailMap.fitBounds(points, { padding: [30, 30] });
+      setupRouteHover(routeLine, trip);
     }
     detailMap.invalidateSize();
 
@@ -602,8 +649,8 @@ function renderSpeedGraph(trip) {
   const emptyHint = document.getElementById("graph-empty-hint");
   const ctx = canvas.getContext("2d");
 
-  const rawPoints = buildSpeedSeries(parseTripPointsWithTime(trip));
-  if (rawPoints.length < 2) {
+  const points = getTripSpeedSeries(trip);
+  if (points.length < 2) {
     canvas.classList.add("hidden");
     chip.classList.add("hidden");
     emptyHint.classList.remove("hidden");
@@ -613,11 +660,6 @@ function renderSpeedGraph(trip) {
   canvas.classList.remove("hidden");
   chip.classList.remove("hidden");
   emptyHint.classList.add("hidden");
-
-  // Median-Filter gegen einzelne GPS-Ausreißer (kurzer ungenauer Fix -> rechnerisch absurd hohe
-  // Distanz/Zeit-Geschwindigkeit) - siehe medianFilterSpeeds(). Ohne den Filter sehen solche
-  // Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen Geschwindigkeitsverlaufs aus.
-  const points = medianFilterSpeeds(rawPoints);
 
   // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
   // deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in den
