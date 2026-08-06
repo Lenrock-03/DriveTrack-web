@@ -61,6 +61,16 @@ ssh root@5.45.110.201 "find /var/www/drivetrack-web -type d -exec chmod 755 {} \
   4er-Grid-Reihe oben), der Geschwindigkeits-Graph (siehe unten, seit v1.1.0 vorhanden) davor/danach
   statt als eigener Abschnitt unter der Karte. Layout-Umbau selbst noch nicht umgesetzt.
 
+## Einstellungen (seit v1.6.0)
+
+`#settings-screen` ist in Gruppen gegliedert (`.settings-group-header` + `.settings-section`,
+CSS-Klassen ohne JS-Logik) statt der vorherigen 4 Einträge in wiederverwendeter `.auth-card`-Optik:
+👤 Konto (Benutzername + E-Mail als `.settings-info-tile`-Kacheln, Abmelden mit Zwei-Klick-
+Bestätigung), 🔄 Daten ("Daten neu laden" mit eingeblendeter `.settings-status-msg` statt `alert()`
+– war die einzige Stelle der ganzen App mit einem nativen alert()), ℹ️ Über (Version). Die E-Mail
+kommt aus `session.email`, die der Login-Endpunkt erst seit Backend v1.1.1 überhaupt zurückgibt
+(vorher stand dort ein Bug: `email: session?.email` las sich selbst aus, war dadurch immer leer).
+
 ## Routen-Farbmodus (seit v1.5.0)
 
 Auswahlmenü oben rechts auf der Fahrt-Detail-Karte (`#route-color-mode`): "Standard" (einheitliche

@@ -77,7 +77,10 @@ document.getElementById("login-btn").addEventListener("click", async () => {
     saveSession({
       token: result.token,
       username,
-      email: session?.email || "",
+      // Vorher fälschlich "session?.email" (Selbstbezug auf die noch nicht existierende Session,
+      // war dadurch immer leer) - der Login-Endpunkt liefert die E-Mail jetzt selbst mit (Backend
+      // v1.1.1), das ist die tatsächliche Quelle.
+      email: result.email || "",
       passwordSalt: result.passwordSalt,
       dekWrappedPassword: result.dekWrappedPassword,
     });
@@ -230,9 +233,25 @@ document.getElementById("unlock-logout-btn").addEventListener("click", () => {
   clearSession();
   showScreen("login");
 });
-document.getElementById("settings-logout-btn").addEventListener("click", () => {
-  clearSession();
-  showScreen("login");
+// Leichte Zwei-Klick-Bestätigung statt sofortigem Abmelden: erster Klick ändert den Button-Text
+// kurz zu "Wirklich abmelden?", verfällt nach ein paar Sekunden zurück, falls nicht bestätigt.
+let logoutConfirmTimeout = null;
+const logoutBtn = document.getElementById("settings-logout-btn");
+logoutBtn.addEventListener("click", () => {
+  if (logoutBtn.dataset.confirming === "1") {
+    clearTimeout(logoutConfirmTimeout);
+    logoutBtn.dataset.confirming = "0";
+    logoutBtn.textContent = "Abmelden";
+    clearSession();
+    showScreen("login");
+  } else {
+    logoutBtn.dataset.confirming = "1";
+    logoutBtn.textContent = "Wirklich abmelden?";
+    logoutConfirmTimeout = setTimeout(() => {
+      logoutBtn.dataset.confirming = "0";
+      logoutBtn.textContent = "Abmelden";
+    }, 3000);
+  }
 });
 
 // --- Backup laden & entschlüsseln ---
@@ -253,17 +272,20 @@ async function loadAndRenderBackup() {
 
 document.getElementById("settings-reload-btn").addEventListener("click", async () => {
   await loadAndRenderBackup();
-  alert("Daten neu geladen");
+  // Kurze eingeblendete Status-Meldung statt eines nativen alert() (einzige Stelle der ganzen
+  // App, die bisher alert() genutzt hat - passt nicht zum sonstigen Stil mit .error-text-Divs etc.).
+  const statusEl = document.getElementById("settings-reload-status");
+  statusEl.classList.remove("hidden");
+  setTimeout(() => statusEl.classList.add("hidden"), 2500);
 });
 
-document.getElementById("settings-username-label").textContent = "";
 // Einzige Quelle der Wahrheit für die Versionsnummer ist der <meta name="app-version">-Tag in
 // index.html (kein Build-Step hier, der eine Konstante an mehreren Stellen einsetzen könnte).
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "?";
 document.getElementById("settings-version-label").textContent = `Version ${APP_VERSION}`;
 document.getElementById("settings-btn").addEventListener("click", () => {
-  document.getElementById("settings-username-label").textContent =
-    `Eingeloggt als "${session?.username || ""}"`;
+  document.getElementById("settings-username-value").textContent = session?.username || "–";
+  document.getElementById("settings-email-value").textContent = session?.email || "–";
   showScreen("settings");
 });
 document.getElementById("settings-back").addEventListener("click", () => showScreen("main"));

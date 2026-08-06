@@ -8,6 +8,18 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.6.0] - 2026-08-06
+
+### Geändert
+- Einstellungen komplett neu gestaltet: Gruppen (👤 Konto, 🔄 Daten, ℹ️ Über) statt der bisherigen
+  4 lose gestapelten Einträge in wiederverwendeter Auth-Formular-Optik. Konto zeigt jetzt
+  Benutzername UND E-Mail als Kacheln (E-Mail wurde bei der Registrierung zwar erfasst, aber nie
+  angezeigt – erforderte einen kleinen Backend-Fix, siehe `drivetrack-api` v1.1.1).
+- "Daten neu laden" zeigt jetzt eine kurze eingeblendete Status-Meldung statt eines nativen
+  `alert()` (war die einzige Stelle der ganzen App, die alert() genutzt hat).
+- "Abmelden" hat jetzt eine leichte Zwei-Klick-Bestätigung ("Wirklich abmelden?") statt sofortigem
+  Logout.
+
 ## [1.5.6] - 2026-08-06
 
 ### Behoben

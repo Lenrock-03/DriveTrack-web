@@ -482,6 +482,70 @@ input:focus {
   color: var(--text-muted);
 }
 
-.settings-card {
-  margin: 40px auto;
+.settings-content {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 20px 40px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.settings-content h2 {
+  margin: 0;
+}
+
+.settings-group-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 20px 0 8px 4px;
+}
+.settings-group-header:first-of-type {
+  margin-top: 8px;
+}
+
+.settings-section {
+  background: var(--surface-variant);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-info-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.settings-info-tile {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.settings-info-tile .label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.settings-info-tile .value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.settings-status-msg {
+  color: var(--primary);
+  font-size: 0.85rem;
+}
+
+.settings-version-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+#settings-logout-btn {
+  align-self: flex-start;
+  padding: 6px 0;
 }

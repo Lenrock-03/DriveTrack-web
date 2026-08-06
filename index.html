@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.5.6" />
+<meta name="app-version" content="1.6.0" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -152,12 +152,34 @@
   <!-- Konto / Settings -->
   <div id="settings-screen" class="overlay-screen hidden">
     <button class="back-btn" id="settings-back">&larr; Zurück</button>
-    <div class="auth-card settings-card">
-      <h2>Konto</h2>
-      <p id="settings-username-label" class="auth-hint"></p>
-      <button id="settings-reload-btn" class="primary-btn">Daten vom Server neu laden</button>
-      <button id="settings-logout-btn" class="link-btn danger">Abmelden</button>
-      <p id="settings-version-label" class="auth-hint"></p>
+    <div class="settings-content">
+      <h2>Einstellungen</h2>
+
+      <div class="settings-group-header">👤 Konto</div>
+      <div class="settings-section">
+        <div class="settings-info-tiles">
+          <div class="settings-info-tile">
+            <div class="label">Benutzername</div>
+            <div class="value" id="settings-username-value"></div>
+          </div>
+          <div class="settings-info-tile">
+            <div class="label">E-Mail</div>
+            <div class="value" id="settings-email-value"></div>
+          </div>
+        </div>
+        <button id="settings-logout-btn" class="link-btn danger">Abmelden</button>
+      </div>
+
+      <div class="settings-group-header">🔄 Daten</div>
+      <div class="settings-section">
+        <button id="settings-reload-btn" class="primary-btn">Daten vom Server neu laden</button>
+        <div id="settings-reload-status" class="settings-status-msg hidden">Daten neu geladen</div>
+      </div>
+
+      <div class="settings-group-header">ℹ️ Über</div>
+      <div class="settings-section">
+        <p id="settings-version-label" class="settings-version-text"></p>
+      </div>
     </div>
   </div>
 
