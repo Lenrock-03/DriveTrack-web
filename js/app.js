@@ -443,7 +443,7 @@ function renderTripList(trips) {
     text.className = "trip-row-text";
     text.innerHTML = `
       <div class="name">${escapeHtml(trip.name)}</div>
-      <div class="meta"><span>${km} km</span><span>${durationMin} min</span></div>
+      <div class="meta"><span>${km} km</span><span>${formatTripDuration(durationMin)}</span></div>
     `;
 
     row.appendChild(text);
@@ -498,6 +498,14 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Spiegelt Trip.durationFormatted (Trip.kt) 1:1: über 60min als "Xh Ym", sonst "X min"
+function formatTripDuration(minutes) {
+  if (minutes > 60) {
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+  return `${minutes} min`;
+}
+
 // --- Hauptkarte (immer alle gefilterten Fahrten, außer in der Detail-Ansicht) ---
 function ensureMainMap() {
   if (mainMap) return;
@@ -546,7 +554,7 @@ function openTripDetail(trip) {
     <div class="date">${dateStr} · ${startTime} – ${endTime} Uhr ${car ? "· " + escapeHtml(car.name) : ""}</div>
     <div class="detail-stats">
       <div class="stat-tile"><div class="value">${(trip.distanceMeters / 1000).toFixed(2)} km</div><div class="label">Distanz</div></div>
-      <div class="stat-tile"><div class="value">${durationMin} min</div><div class="label">Dauer</div></div>
+      <div class="stat-tile"><div class="value">${formatTripDuration(durationMin)}</div><div class="label">Dauer</div></div>
       <div class="stat-tile"><div class="value">${trip.avgSpeedKmh.toFixed(0)} km/h</div><div class="label">Ø Geschwindigkeit</div></div>
       <div class="stat-tile"><div class="value">${trip.maxSpeedKmh.toFixed(0)} km/h</div><div class="label">Max. Geschwindigkeit</div></div>
     </div>

@@ -8,6 +8,12 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.2.2] - 2026-08-06
+
+### Geändert
+- Dauer einer Fahrt (Fahrtenliste + Detail-Ansicht) wird ab über 60 Minuten als "Xh Ym" statt in
+  Minuten angezeigt, spiegelt `Trip.durationFormatted` aus der App 1:1
+
 ## [1.2.1] - 2026-08-05
 
 ### Hinzugefügt
