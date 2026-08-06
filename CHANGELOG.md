@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.4.0] - 2026-08-06
+
+### Hinzugefügt
+- Geschwindigkeits-Graph in der Fahrt-Detail-Ansicht lässt sich über einen Button in der
+  Kopfzeile ein-/ausblenden ("Ausblenden"/"Anzeigen"), die Karte darüber nutzt beim Ausblenden
+  automatisch den frei werdenden Platz. Präferenz bleibt über `localStorage` erhalten.
+
 ## [1.3.0] - 2026-08-06
 
 ### Hinzugefügt

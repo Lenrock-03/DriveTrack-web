@@ -607,6 +607,7 @@ function openTripDetail(trip) {
   `;
 
   showScreen("detail");
+  applyGraphCollapsedState();
 
   // Karte erst nach dem Sichtbarwerden initialisieren (Leaflet braucht sichtbare Größe)
   setTimeout(() => {
@@ -800,6 +801,24 @@ window.addEventListener("resize", () => { if (currentGraphRedraw) currentGraphRe
 document.getElementById("trip-detail-back").addEventListener("click", () => {
   showScreen("main");
   setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+});
+
+// --- Geschwindigkeits-Graph ein-/ausblenden ---
+// Präferenz bleibt über localStorage erhalten, gilt für alle Fahrten (nicht pro Fahrt gespeichert).
+const GRAPH_COLLAPSED_KEY = "drivetrack_graph_collapsed";
+function applyGraphCollapsedState() {
+  const collapsed = localStorage.getItem(GRAPH_COLLAPSED_KEY) === "1";
+  document.getElementById("trip-detail-graph-section").classList.toggle("collapsed", collapsed);
+  document.getElementById("graph-toggle-btn").textContent = collapsed ? "Anzeigen" : "Ausblenden";
+  return collapsed;
+}
+document.getElementById("graph-toggle-btn").addEventListener("click", () => {
+  const wasCollapsed = localStorage.getItem(GRAPH_COLLAPSED_KEY) === "1";
+  localStorage.setItem(GRAPH_COLLAPSED_KEY, wasCollapsed ? "0" : "1");
+  applyGraphCollapsedState();
+  // Canvas hatte während des Ausgeblendetseins Breite/Höhe 0 - beim erneuten Einblenden neu
+  // vermessen und zeichnen, sonst bleibt es leer.
+  if (wasCollapsed && currentGraphRedraw) currentGraphRedraw();
 });
 
 // --- Automatische Synchronisation ---

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.3.0" />
+<meta name="app-version" content="1.4.0" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -121,9 +121,15 @@
     <div id="trip-detail-info" class="detail-info"></div>
     <div id="trip-detail-map"></div>
     <div id="trip-detail-graph-section" class="graph-section">
-      <div id="graph-info-chip" class="graph-info-chip hidden"></div>
-      <div id="graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
-      <canvas id="speed-graph-canvas"></canvas>
+      <div class="graph-header">
+        <span class="graph-header-label">Geschwindigkeit</span>
+        <button id="graph-toggle-btn" class="graph-toggle-btn" type="button">Ausblenden</button>
+      </div>
+      <div id="graph-body" class="graph-body">
+        <div id="graph-info-chip" class="graph-info-chip hidden"></div>
+        <div id="graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
+        <canvas id="speed-graph-canvas"></canvas>
+      </div>
     </div>
   </div>
 

@@ -333,6 +333,49 @@ input:focus {
   border-top: 1px solid var(--border);
 }
 
+/* Eingeklappt: nur die Kopfzeile mit dem "Anzeigen"-Button bleibt übrig, die Karte darüber
+   (flex: 1) wächst automatisch in den frei werdenden Platz nach. */
+.graph-section.collapsed {
+  height: auto;
+  padding-bottom: 12px;
+}
+.graph-section.collapsed .graph-body {
+  display: none;
+}
+
+.graph-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.graph-header-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.graph-toggle-btn {
+  background: var(--surface-variant);
+  color: var(--text);
+  border: none;
+  border-radius: 10px;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.graph-toggle-btn:hover {
+  background: var(--border);
+}
+
+.graph-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .graph-info-chip {
   align-self: center;
   display: flex;
