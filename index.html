@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.5.2" />
+<meta name="app-version" content="1.5.3" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -129,7 +129,11 @@
       </div>
       <div id="route-color-legend" class="route-color-legend hidden">
         <div class="route-color-legend-bar"></div>
-        <div class="route-color-legend-labels"><span>0</span><span>130</span><span>180+ km/h</span></div>
+        <div class="route-color-legend-labels">
+          <span class="legend-tick legend-tick-start">0</span>
+          <span class="legend-tick legend-tick-mid" id="route-color-legend-mid">130</span>
+          <span class="legend-tick legend-tick-end">180+ km/h</span>
+        </div>
       </div>
     </div>
     <div id="trip-detail-graph-section" class="graph-section">

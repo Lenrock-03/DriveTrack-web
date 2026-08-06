@@ -920,6 +920,10 @@ const legendStops = [];
 for (let v = 0; v <= ROUTE_COLOR_PURPLE_KMH; v += 10) legendStops.push(speedToColor(v));
 document.querySelector(".route-color-legend-bar").style.background =
   `linear-gradient(to right, ${legendStops.join(", ")})`;
+// "130"-Tick an die tatsächliche Position seines Werts im Gradienten setzen (130/180 ≈ 72%),
+// statt ihn per Flexbox in die Mitte zu zwingen, wo eigentlich eine andere Farbe/Geschwindigkeit sitzt.
+document.getElementById("route-color-legend-mid").style.left =
+  `${(ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH) * 100}%`;
 
 // --- Automatische Synchronisation ---
 // Die App synchronisiert seit 0.3.0 selbst automatisch nach jeder Fahrt - hier holen wir uns

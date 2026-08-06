@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.5.3] - 2026-08-06
+
+### Behoben
+- Legende der Geschwindigkeits-Farbskala: der "130"-Tick saß per Flexbox/`space-between` in der
+  Mitte des Balkens, obwohl 130 tatsächlich bei 130/180 ≈ 72 % des Gradienten liegt – Farbe an der
+  Tick-Position stimmte dadurch nicht mit dem Label überein. Jetzt an der echten Position platziert.
+
 ## [1.5.2] - 2026-08-06
 
 ### Geändert

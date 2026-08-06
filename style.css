@@ -358,11 +358,27 @@ input:focus {
   border-radius: 4px;
 }
 .route-color-legend-labels {
-  display: flex;
-  justify-content: space-between;
+  /* Absolut statt space-between: die Ticks müssen an der tatsächlichen Position ihres Werts im
+     Gradienten sitzen (130 liegt bei 130/180 ≈ 72% der Breite, NICHT in der Mitte). */
+  position: relative;
+  height: 13px;
   margin-top: 4px;
   font-size: 0.68rem;
   color: var(--text-muted);
+}
+.legend-tick {
+  position: absolute;
+  white-space: nowrap;
+}
+.legend-tick-start {
+  left: 0;
+}
+.legend-tick-end {
+  right: 0;
+}
+.legend-tick-mid {
+  /* left-% wird per JS anhand von ROUTE_COLOR_RED_KMH/ROUTE_COLOR_PURPLE_KMH gesetzt */
+  transform: translateX(-50%);
 }
 
 /* --- Geschwindigkeits-Graph (Fahrt-Detail) --- */
