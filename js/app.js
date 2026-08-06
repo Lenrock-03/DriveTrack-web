@@ -557,9 +557,15 @@ function renderMainMap(trips) {
 // bei Bedarf heruntergesampelt (siehe renderRouteLine()).
 const MAX_ROUTE_COLOR_SEGMENTS = 1500;
 
-/** Grün (langsam) -> Rot (schnell), analog zur Achse des Geschwindigkeits-Graphen. */
-function speedToColor(speedKmh, scaleMax) {
-  const fraction = Math.min(1, Math.max(0, speedKmh / scaleMax));
+// Feste, einheitliche Geschwindigkeits-Farbskala (bewusst NICHT relativ zur einzelnen Fahrt) -
+// dieselbe Farbe bedeutet dadurch bei jeder Fahrt dieselbe Geschwindigkeit, vergleichbar zwischen
+// z.B. einer Stadtfahrt und einer Autobahnfahrt. 150 km/h deckt normale Autobahn-Geschwindigkeiten
+// ab, alles darüber wird auf Vollrot gekappt.
+const ROUTE_COLOR_SCALE_MAX_KMH = 150;
+
+/** Grün (langsam) -> Rot (schnell) auf der festen Skala bis ROUTE_COLOR_SCALE_MAX_KMH. */
+function speedToColor(speedKmh) {
+  const fraction = Math.min(1, Math.max(0, speedKmh / ROUTE_COLOR_SCALE_MAX_KMH));
   const hue = 120 * (1 - fraction);
   return `hsl(${hue}, 85%, 50%)`;
 }
@@ -579,7 +585,6 @@ function renderRouteLine(trip, points) {
   if (mode === "speed") {
     const series = getTripSpeedSeries(trip);
     if (series.length >= 2) {
-      const scaleMax = niceCeilSpeed(Math.max(1, trip.maxSpeedKmh || 0));
       const step = Math.max(1, Math.ceil((series.length - 1) / MAX_ROUTE_COLOR_SEGMENTS));
       let i = 0;
       while (i < series.length - 1) {
@@ -591,7 +596,7 @@ function renderRouteLine(trip, points) {
           speedSum += series[j].speedKmh;
         }
         const avgSpeed = speedSum / (end - i + 1);
-        const segment = L.polyline(segPoints, { color: speedToColor(avgSpeed, scaleMax), weight: 5 }).addTo(detailMap);
+        const segment = L.polyline(segPoints, { color: speedToColor(avgSpeed), weight: 5 }).addTo(detailMap);
         routeLineLayers.push(segment);
         i = end;
       }
@@ -889,14 +894,21 @@ document.getElementById("graph-toggle-btn").addEventListener("click", () => {
 // Präferenz bleibt über localStorage erhalten, gilt für alle Fahrten (nicht pro Fahrt gespeichert).
 const ROUTE_COLOR_MODE_KEY = "drivetrack_route_color_mode";
 function applyRouteColorModeSelection() {
-  document.getElementById("route-color-mode").value = localStorage.getItem(ROUTE_COLOR_MODE_KEY) || "standard";
+  const mode = localStorage.getItem(ROUTE_COLOR_MODE_KEY) || "standard";
+  document.getElementById("route-color-mode").value = mode;
+  document.getElementById("route-color-legend").classList.toggle("hidden", mode !== "speed");
 }
 document.getElementById("route-color-mode").addEventListener("change", (e) => {
   localStorage.setItem(ROUTE_COLOR_MODE_KEY, e.target.value);
+  document.getElementById("route-color-legend").classList.toggle("hidden", e.target.value !== "speed");
   if (currentDetailTrip && detailMap) {
     renderRouteLine(currentDetailTrip, parseTripPoints(currentDetailTrip));
   }
 });
+// Legende einmalig mit der echten Farbfunktion befüllen, statt die Farben separat in CSS zu
+// duplizieren (garantiert, dass sie exakt zur tatsächlichen Route-Einfärbung passt).
+document.querySelector(".route-color-legend-bar").style.background =
+  `linear-gradient(to right, ${[0, 37.5, 75, 112.5, 150].map(speedToColor).join(", ")})`;
 
 // --- Automatische Synchronisation ---
 // Die App synchronisiert seit 0.3.0 selbst automatisch nach jeder Fahrt - hier holen wir uns

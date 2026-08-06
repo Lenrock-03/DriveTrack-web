@@ -341,6 +341,30 @@ input:focus {
   cursor: pointer;
 }
 
+/* Erklärt die feste (nicht pro Fahrt relative) Geschwindigkeits-Farbskala, nur im "Geschwindigkeit"-Modus */
+.route-color-legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 1100;
+  width: 150px;
+  background: var(--surface-variant);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.route-color-legend-bar {
+  height: 8px;
+  border-radius: 4px;
+}
+.route-color-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
 /* --- Geschwindigkeits-Graph (Fahrt-Detail) --- */
 .graph-section {
   height: 220px;
