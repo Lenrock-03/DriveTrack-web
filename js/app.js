@@ -736,8 +736,11 @@ function renderSpeedGraph(trip) {
     selectAtClientX(e.clientX);
   };
   canvas.onpointermove = (e) => {
-    if (!dragging) return;
-    selectAtClientX(e.clientX);
+    // Maus: Cursor folgt der Position schon beim reinen Hovern (kein Klick nötig).
+    // Touch/Pen: nur während des Ziehens, da es dort kein Hover ohne Kontakt gibt.
+    if (dragging || e.pointerType === "mouse") {
+      selectAtClientX(e.clientX);
+    }
   };
   canvas.onpointerup = () => { dragging = false; };
   canvas.onpointercancel = () => { dragging = false; };

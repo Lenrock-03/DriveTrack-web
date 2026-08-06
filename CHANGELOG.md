@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.2.3] - 2026-08-06
+
+### Geändert
+- Geschwindigkeits-Graph: Cursor/Marker folgt jetzt der Mausposition schon beim reinen Hovern
+  (Desktop), nicht mehr erst beim Klicken+Ziehen. Auf Touch-Geräten bleibt es beim bewährten
+  Ziehen, da es dort ohne Berührung kein Hover gibt.
+
 ## [1.2.2] - 2026-08-06
 
 ### Geändert
