@@ -391,7 +391,14 @@ function niceCeilSpeed(value) {
 function getTripSpeedSeries(trip) {
   const rawPoints = buildSpeedSeries(parseTripPointsWithTime(trip));
   if (rawPoints.length < 2) return [];
-  return medianFilterSpeeds(rawPoints);
+  const filtered = medianFilterSpeeds(rawPoints);
+  // Harte Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert, robuster
+  // als unsere eigene Positions-Differenz-Rechnung) und ist die verlässliche Obergrenze der ganzen
+  // Fahrt. Ein GPS-Aussetzer über mehrere aufeinanderfolgende Punkte (nicht nur einen einzelnen)
+  // kann den 5-Punkte-Median-Filter durchschlagen und absurd hohe Einzelwerte erzeugen (z.B.
+  // "451 km/h" im Route-Hover/der Route-Farbe) - deshalb hier zusätzlich hart kappen.
+  const maxSpeed = Math.max(1, trip.maxSpeedKmh || 0);
+  return filtered.map((p) => (p.speedKmh > maxSpeed ? { ...p, speedKmh: maxSpeed } : p));
 }
 
 // --- Rendering ---
