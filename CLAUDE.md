@@ -70,10 +70,11 @@ zeichnet `renderRouteLine()` die Route als mehrere kurze `L.polyline`-Segmente (
 breitere Linie über die vollen Punkte nur fürs Hover/Tap (`setupRouteHover()` bleibt unverändert).
 Präferenz bleibt über `localStorage` erhalten. Die Detail-Karte nutzt seitdem `preferCanvas: true`
 (Leaflet rendert Vektor-Layer dann per Canvas statt SVG-DOM-Knoten – deutlich flüssiger bei vielen
-Segmenten). Die Farbskala ist seit v1.5.1 **fest** (0–150 km/h, `ROUTE_COLOR_SCALE_MAX_KMH`), nicht
-relativ zur einzelnen Fahrt – dazu eine Legende (`#route-color-legend`) unten links, deren
-Gradient direkt aus `speedToColor()` gebaut wird (keine separat gepflegte CSS-Farbskala). Spiegelt
-sich 1:1 in der App (`RouteColorMode`/`speedToColor()` in `TripDetailScreen.kt`).
+Segmenten). Die Farbskala ist seit v1.5.1 **fest**, nicht relativ zur einzelnen Fahrt – dazu eine
+Legende (`#route-color-legend`) unten links, deren Gradient direkt aus `speedToColor()` gebaut wird
+(keine separat gepflegte CSS-Farbskala). Seit v1.5.2 zweistufig: 0–130 km/h grün→rot
+(`ROUTE_COLOR_RED_KMH`), 130–180 km/h zusätzlich rot→lila (`ROUTE_COLOR_PURPLE_KMH`, danach
+gekappt). Spiegelt sich 1:1 in der App (`RouteColorMode`/`speedToColor()` in `TripDetailScreen.kt`).
 
 ## Auto-Refresh (seit v1.2.0)
 

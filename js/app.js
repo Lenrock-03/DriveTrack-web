@@ -559,14 +559,22 @@ const MAX_ROUTE_COLOR_SEGMENTS = 1500;
 
 // Feste, einheitliche Geschwindigkeits-Farbskala (bewusst NICHT relativ zur einzelnen Fahrt) -
 // dieselbe Farbe bedeutet dadurch bei jeder Fahrt dieselbe Geschwindigkeit, vergleichbar zwischen
-// z.B. einer Stadtfahrt und einer Autobahnfahrt. 150 km/h deckt normale Autobahn-Geschwindigkeiten
-// ab, alles darüber wird auf Vollrot gekappt.
-const ROUTE_COLOR_SCALE_MAX_KMH = 150;
+// z.B. einer Stadtfahrt und einer Autobahnfahrt. Zweistufig: 0-130 km/h grün->rot (130 = Richt-
+// geschwindigkeit Autobahn), 130-180 km/h zusätzlich rot->lila zur klaren Abhebung sehr hoher
+// Geschwindigkeiten. Alles über 180 km/h wird auf volles Lila gekappt.
+const ROUTE_COLOR_RED_KMH = 130;
+const ROUTE_COLOR_PURPLE_KMH = 180;
 
-/** Grün (langsam) -> Rot (schnell) auf der festen Skala bis ROUTE_COLOR_SCALE_MAX_KMH. */
+/** Grün (langsam) -> Rot (130 km/h) -> Lila (ab 180 km/h) auf der festen Skala. */
 function speedToColor(speedKmh) {
-  const fraction = Math.min(1, Math.max(0, speedKmh / ROUTE_COLOR_SCALE_MAX_KMH));
-  const hue = 120 * (1 - fraction);
+  let hue;
+  if (speedKmh <= ROUTE_COLOR_RED_KMH) {
+    const fraction = Math.min(1, Math.max(0, speedKmh / ROUTE_COLOR_RED_KMH));
+    hue = 120 * (1 - fraction); // 120 (grün) .. 0 (rot)
+  } else {
+    const fraction = Math.min(1, Math.max(0, (speedKmh - ROUTE_COLOR_RED_KMH) / (ROUTE_COLOR_PURPLE_KMH - ROUTE_COLOR_RED_KMH)));
+    hue = 360 - 75 * fraction; // 360/0 (rot) .. 285 (lila), kurzer Weg (nicht zurück durch Gelb/Grün)
+  }
   return `hsl(${hue}, 85%, 50%)`;
 }
 
@@ -906,9 +914,12 @@ document.getElementById("route-color-mode").addEventListener("change", (e) => {
   }
 });
 // Legende einmalig mit der echten Farbfunktion befüllen, statt die Farben separat in CSS zu
-// duplizieren (garantiert, dass sie exakt zur tatsächlichen Route-Einfärbung passt).
+// duplizieren (garantiert, dass sie exakt zur tatsächlichen Route-Einfärbung passt). Feine
+// 10-km/h-Schritte, damit der Knick bei 130 (rot) glatt in den Verlauf übergeht.
+const legendStops = [];
+for (let v = 0; v <= ROUTE_COLOR_PURPLE_KMH; v += 10) legendStops.push(speedToColor(v));
 document.querySelector(".route-color-legend-bar").style.background =
-  `linear-gradient(to right, ${[0, 37.5, 75, 112.5, 150].map(speedToColor).join(", ")})`;
+  `linear-gradient(to right, ${legendStops.join(", ")})`;
 
 // --- Automatische Synchronisation ---
 // Die App synchronisiert seit 0.3.0 selbst automatisch nach jeder Fahrt - hier holen wir uns
