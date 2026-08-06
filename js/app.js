@@ -363,13 +363,17 @@ function buildSpeedSeries(raw) {
 }
 
 /**
- * Median-Filter über die Geschwindigkeit (Fenster von 5 Punkten): einzelne GPS-Ausreißer (kurzer
+ * Median-Filter über die Geschwindigkeit (Fenster von 9 Punkten): einzelne GPS-Ausreißer (kurzer
  * ungenauer Fix) erzeugen sonst isolierte Nadel-Spitzen statt eines realistisch wirkenden Verlaufs
  * - der Median eines Fensters ignoriert genau solche einzelnen Ausreißer, echte Beschleunigungs-/
  * Bremstrends bleiben erhalten. cumulativeKm/Position bleiben unverändert (die Distanz-Berechnung
  * selbst ist von dem Rauschen nicht betroffen, nur die Momentan-Geschwindigkeit pro Segment).
+ * windowRadius=4 statt 2: GPS-Aussetzer (z.B. beim Einrasten des Fixes zu Fahrtbeginn oder in einer
+ * Unterführung) liefern oft mehrere aufeinanderfolgende schlechte Punkte statt nur einem einzelnen
+ * - ein 5-Punkte-Fenster reißt bei 3 aufeinanderfolgenden Ausreißern durch (der Ausreißer wird selbst
+ * zum Median), ein 9-Punkte-Fenster hält das deutlich zuverlässiger ab (verifiziert per Test).
  */
-function medianFilterSpeeds(points, windowRadius = 2) {
+function medianFilterSpeeds(points, windowRadius = 4) {
   const raw = points.map((p) => p.speedKmh);
   return points.map((p, i) => {
     const lo = Math.max(0, i - windowRadius);
@@ -384,21 +388,26 @@ function niceCeilSpeed(value) {
   return Math.max(10, Math.ceil(value / 10) * 10);
 }
 
+// Letzte Sicherheitsgrenze für die Anzeige, bewusst NICHT trip.maxSpeedKmh: dieser Wert kommt zwar
+// normalerweise vom GPS-Chip direkt (Doppler-basiert, robuster als Positions-Differenzen), kann
+// aber selbst durch genau dasselbe GPS-Problem verfälscht sein (z.B. beim Einrasten des Fixes zu
+// Fahrtbeginn) - ein Clamp darauf würde dann einen verdächtig glatten Plateau exakt auf diesem
+// (falschen) Wert erzeugen, statt das Problem sichtbar zu machen. 260 km/h ist für ein normales
+// Auto ohnehin unrealistisch, greift also praktisch nie bei echten Daten, nur bei Sensor-Ausfällen,
+// die selbst das breitere Median-Fenster nicht abfängt.
+const PLAUSIBLE_MAX_CAR_KMH = 260;
+
 /**
- * Gemeinsame Zeit/Geschwindigkeit/Distanz-Serie für eine Fahrt (median-gefiltert), damit der
- * Geschwindigkeits-Graph und das Hover auf der Routen-Linie exakt dieselben Werte anzeigen.
+ * Gemeinsame Zeit/Geschwindigkeit/Distanz-Serie für eine Fahrt (median-gefiltert + gekappt), damit
+ * der Geschwindigkeits-Graph und das Hover auf der Routen-Linie exakt dieselben Werte anzeigen.
  */
 function getTripSpeedSeries(trip) {
   const rawPoints = buildSpeedSeries(parseTripPointsWithTime(trip));
   if (rawPoints.length < 2) return [];
   const filtered = medianFilterSpeeds(rawPoints);
-  // Harte Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert, robuster
-  // als unsere eigene Positions-Differenz-Rechnung) und ist die verlässliche Obergrenze der ganzen
-  // Fahrt. Ein GPS-Aussetzer über mehrere aufeinanderfolgende Punkte (nicht nur einen einzelnen)
-  // kann den 5-Punkte-Median-Filter durchschlagen und absurd hohe Einzelwerte erzeugen (z.B.
-  // "451 km/h" im Route-Hover/der Route-Farbe) - deshalb hier zusätzlich hart kappen.
-  const maxSpeed = Math.max(1, trip.maxSpeedKmh || 0);
-  return filtered.map((p) => (p.speedKmh > maxSpeed ? { ...p, speedKmh: maxSpeed } : p));
+  return filtered.map((p) =>
+    p.speedKmh > PLAUSIBLE_MAX_CAR_KMH ? { ...p, speedKmh: PLAUSIBLE_MAX_CAR_KMH } : p
+  );
 }
 
 // --- Rendering ---

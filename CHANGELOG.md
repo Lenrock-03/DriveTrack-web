@@ -8,6 +8,17 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.5.6] - 2026-08-06
+
+### Behoben
+- Der letzte Fix (1.5.5) kappte GPS-Ausreißer auf `trip.maxSpeedKmh` – bei mehreren aufeinander-
+  folgenden Ausreißer-Punkten (z. B. beim Einrasten des GPS-Fixes zu Fahrtbeginn) erzeugte das
+  einen verdächtig glatten Plateau exakt auf diesem Wert statt das Problem zu beheben, und
+  `trip.maxSpeedKmh` selbst kann durch dasselbe GPS-Problem verfälscht sein. Jetzt: Median-Filter
+  von 5 auf 9 Punkte verbreitert (hält deutlich mehr aufeinanderfolgende Ausreißer ab, verifiziert
+  per Test), Kappung nutzt eine fahrtunabhängige, für Autos generell unrealistische Grenze
+  (260 km/h) statt `trip.maxSpeedKmh`.
+
 ## [1.5.5] - 2026-08-06
 
 ### Behoben
