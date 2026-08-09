@@ -8,6 +8,19 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.8.1] - 2026-08-09
+
+### Behoben
+- **Konfliktsicherer Push zeigte Bearbeitungen von anderen Geräten nicht an**: der Merge in
+  `pushBackupConflictSafe()` nutzte bisher `mergeBackupDataAdditive()` (rein additiv - fügt nur
+  komplett neue Fahrten hinzu, überspringt bekannte als "Duplikat"). Wurde also z. B. auf dem
+  Handy ein Label an einer schon bekannten Fahrt geändert, hat ein anschließendes Speichern auf der
+  Web-App diese Änderung beim Konflikt-Merge nie übernommen. Umbenannt/umgebaut zu
+  `mergeBackupDataOverwrite()` (überschreibt bekannte Fahrten mit dem neueren Stand statt sie zu
+  überspringen - dieselbe Logik wie schon beim Versionsverlauf-Wiederherstellen, jetzt geteilt).
+- "🔄 Aktualisieren" zeigt jetzt kurz "✓ Aktualisiert" als Bestätigung statt ohne jede sichtbare
+  Rückmeldung zu wirken.
+
 ## [1.8.0] - 2026-08-09
 
 ### Hinzugefügt

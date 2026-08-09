@@ -290,12 +290,18 @@ function nextLocalId(list) {
 }
 
 /**
- * Additive Merge: Trips über Start-/Endzeitpunkt abgleichen, Users/Cars über Namen - identische
- * Regel wie BackupExporter.importBackupFromJson() in der App. Mutiert `target` in place, fügt nur
- * fehlende Einträge hinzu, überschreibt/löscht nie Bestehendes. Trips tragen bewusst kein "id"-Feld
- * im Backup-JSON (App re-identifiziert sie beim Import über Start-/Endzeitpunkt) - hier genauso.
+ * Übernimmt eine Remote-Backup-Version in `target` (mutiert in place): Trips über Start-/
+ * Endzeitpunkt abgeglichen, Users/Cars über Namen. Bestehende Fahrten werden dabei ÜBERSCHRIEBEN
+ * (nicht nur ergänzt) - Grund: ein rein additiver Merge (frühere Variante dieser Funktion) hätte
+ * Bearbeitungen an einer schon bekannten Fahrt (z.B. Labels/Markierungen von der App) beim Web-
+ * seitigen Speichern stillschweigend ignoriert, weil "gleicher Start-/Endzeitpunkt" als reines
+ * Duplikat behandelt wurde, statt die neueren Werte zu übernehmen - genau das ließ "Aktualisieren"
+ * wirkungslos aussehen. Users/Cars bleiben bewusst additiv (nie überschrieben) - Namens-Overwrites
+ * dort wären riskanter als nützlich. Trips tragen bewusst kein "id"-Feld im Backup-JSON (App
+ * re-identifiziert sie beim Import über Start-/Endzeitpunkt) - hier genauso. Gibt zurück, wie viele
+ * Fahrten überschrieben bzw. neu ergänzt wurden.
  */
-function mergeBackupDataAdditive(target, remote) {
+function mergeBackupDataOverwrite(target, remote) {
   const userIdMap = new Map();
   (remote.users || []).forEach((u) => {
     const existing = target.users.find((tu) => tu.name.toLowerCase() === u.name.toLowerCase());
@@ -320,23 +326,35 @@ function mergeBackupDataAdditive(target, remote) {
     }
   });
 
+  let overwritten = 0;
+  let added = 0;
   (remote.trips || []).forEach((t) => {
-    const isDuplicate = target.trips.some(
+    const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
+    const tripObj = { ...t, carId: newCarId };
+    const existingIdx = target.trips.findIndex(
       (existing) => existing.startTimestamp === t.startTimestamp && existing.endTimestamp === t.endTimestamp
     );
-    if (isDuplicate) return;
-    const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
-    target.trips.push({ ...t, carId: newCarId });
+    if (existingIdx !== -1) {
+      target.trips[existingIdx] = tripObj;
+      overwritten++;
+    } else {
+      target.trips.push(tripObj);
+      added++;
+    }
   });
+
+  return { overwritten, added };
 }
 
 /**
  * Pull-Check-Merge-Push, identisch zu ServerSync.syncFullBackupIfPossible() in der App: lädt erst
  * die aktuellste Server-Version, vergleicht ihre Id mit der zuletzt bekannten. Weicht sie ab (ein
- * anderes Gerät - z.B. das Handy - hat inzwischen gepusht), wird sie erst additiv in `backupData`
- * gemergt, BEVOR der eigentliche Push passiert - sonst würde jeder Speichervorgang unbemerkt
- * Bearbeitungen von woanders überschreiben. Wirft bei einem Fehler (anders als die App, die das
- * still verschluckt) - hier soll ein fehlgeschlagenes Speichern dem Nutzer sichtbar gemeldet werden.
+ * anderes Gerät - z.B. das Handy - hat inzwischen gepusht), wird sie erst in `backupData`
+ * übernommen (mergeBackupDataOverwrite() - überschreibt bekannte Fahrten mit dem neueren Stand,
+ * ergänzt nur wirklich neue), BEVOR der eigentliche Push passiert - sonst würde jeder
+ * Speichervorgang unbemerkt Bearbeitungen von woanders überschreiben. Wirft bei einem Fehler
+ * (anders als die App, die das still verschluckt) - hier soll ein fehlgeschlagenes Speichern dem
+ * Nutzer sichtbar gemeldet werden.
  */
 async function pushBackupConflictSafe() {
   if (!session || !dek) throw new Error("Nicht eingeloggt/entsperrt");
@@ -347,7 +365,7 @@ async function pushBackupConflictSafe() {
     if (Number(latest.id) !== Number(lastKnown)) {
       const blob = { ciphertextBase64: latest.ciphertext, ivBase64: latest.iv };
       const remoteJson = await cryptoUtil.decryptWithDek(blob, dek);
-      mergeBackupDataAdditive(backupData, JSON.parse(remoteJson));
+      mergeBackupDataOverwrite(backupData, JSON.parse(remoteJson));
     }
   }
 
@@ -380,10 +398,17 @@ document.getElementById("settings-reload-btn").addEventListener("click", async (
 // Speichern selbst hochgeladen (pushBackupConflictSafe()), kein zusätzlicher Push hier nötig.
 document.getElementById("refresh-btn").addEventListener("click", async () => {
   const btn = document.getElementById("refresh-btn");
+  const originalText = btn.textContent;
   btn.disabled = true;
+  btn.textContent = "🔄 Aktualisiere…";
   try {
     await loadAndRenderBackup();
+    // Kurzes sichtbares Feedback, sonst wirkt der Klick wirkungslos, wenn sich gerade nichts
+    // geändert hat (fühlt sich sonst wie ein Bug an statt wie "es gibt nichts Neues").
+    btn.textContent = "✓ Aktualisiert";
+    setTimeout(() => { btn.textContent = originalText; }, 1200);
   } catch (e) {
+    btn.textContent = originalText;
     // still, kein alert() nötig - loadAndRenderBackup() lässt den bisherigen Stand einfach stehen
   } finally {
     btn.disabled = false;
@@ -407,54 +432,15 @@ document.getElementById("settings-back").addEventListener("click", () => showScr
 // hier als manueller Wiederherstellen-Hebel freigelegt, Pendant zu ServerBackupScreen.kt in der App.
 
 /**
- * Anders als der normale additive Merge (mergeBackupDataAdditive) werden bestehende Fahrten mit
- * übereinstimmender Start-/Endzeit hier NICHT übersprungen, sondern auf den Stand der gewählten
- * (i.d.R. älteren) Version zurückgesetzt - der eigentliche Zweck des Versionsverlaufs. Mutiert
- * backupData in place, gibt zurück wie viele Fahrten zurückgesetzt bzw. neu ergänzt wurden.
+ * Setzt Fahrten mit übereinstimmender Start-/Endzeit gezielt auf den Stand der gewählten
+ * (i.d.R. älteren) Version zurück - der eigentliche Zweck des Versionsverlaufs. Dünner Wrapper um
+ * mergeBackupDataOverwrite() (dieselbe Überschreiben-Semantik, die auch der normale konfliktsichere
+ * Push nutzt), mutiert backupData in place.
  */
 function restoreFromJsonWeb(jsonText) {
   const remote = JSON.parse(jsonText);
-
-  const userIdMap = new Map();
-  (remote.users || []).forEach((u) => {
-    const existing = backupData.users.find((tu) => tu.name.toLowerCase() === u.name.toLowerCase());
-    if (existing) userIdMap.set(u.id, existing.id);
-    else {
-      const newId = nextLocalId(backupData.users);
-      backupData.users.push({ id: newId, name: u.name });
-      userIdMap.set(u.id, newId);
-    }
-  });
-
-  const carIdMap = new Map();
-  (remote.cars || []).forEach((c) => {
-    const existing = backupData.cars.find((tc) => tc.name.toLowerCase() === c.name.toLowerCase());
-    if (existing) carIdMap.set(c.id, existing.id);
-    else {
-      const newId = nextLocalId(backupData.cars);
-      backupData.cars.push({ id: newId, name: c.name });
-      carIdMap.set(c.id, newId);
-    }
-  });
-
-  let restored = 0;
-  let added = 0;
-  (remote.trips || []).forEach((t) => {
-    const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
-    const tripObj = { ...t, carId: newCarId };
-    const existingIdx = backupData.trips.findIndex(
-      (existing) => existing.startTimestamp === t.startTimestamp && existing.endTimestamp === t.endTimestamp
-    );
-    if (existingIdx !== -1) {
-      backupData.trips[existingIdx] = tripObj;
-      restored++;
-    } else {
-      backupData.trips.push(tripObj);
-      added++;
-    }
-  });
-
-  return { restored, added };
+  const { overwritten, added } = mergeBackupDataOverwrite(backupData, remote);
+  return { restored: overwritten, added };
 }
 
 document.getElementById("settings-history-btn").addEventListener("click", async () => {

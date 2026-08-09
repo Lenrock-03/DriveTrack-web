@@ -148,12 +148,16 @@ Merge-Push** umgestellt:
 - `pushBackupConflictSafe()` in `js/app.js`: lädt vor jedem Push erst `GET /api/backup` (liefert
   auch dessen `id`), vergleicht sie mit der zuletzt bekannten (`localStorage`-Key
   `drivetrack_last_known_backup_id`, Pendant zu `ServerAuthPreferences.getLastKnownBackupId()` in
-  der App). Weicht sie ab (die App hat inzwischen gepusht), wird diese Version erst additiv in
-  `backupData` gemergt (`mergeBackupDataAdditive()` – Trips über Start-/Endzeitpunkt, Users/Cars
-  über Namen, dedupliziert nach demselben Muster wie `BackupExporter.importBackupFromJson()`, nie
-  überschrieben/gelöscht), bevor der eigentliche Push passiert. Anders als die App (die Fehler
-  still verschluckt) wirft diese Funktion bei einem Fehler – ein vom Nutzer ausgelöstes Speichern
-  soll sichtbar fehlschlagen können.
+  der App). Weicht sie ab (die App hat inzwischen gepusht), wird diese Version in `backupData`
+  übernommen (`mergeBackupDataOverwrite()` – Trips über Start-/Endzeitpunkt, Users/Cars über Namen
+  abgeglichen; ÜBERSCHREIBT bekannte Fahrten mit dem neueren Stand statt sie als Duplikat zu
+  überspringen, seit v1.8.1 – siehe unten "Versionsverlauf": beide teilen sich dieselbe Funktion),
+  bevor der eigentliche Push passiert. Anders als die App (die Fehler still verschluckt) wirft
+  diese Funktion bei einem Fehler – ein vom Nutzer ausgelöstes Speichern soll sichtbar
+  fehlschlagen können. **v1.8.1-Fix**: hieß vorher `mergeBackupDataAdditive()` und war rein
+  additiv (nie überschrieben) – das ließ Bearbeitungen an einer bereits bekannten Fahrt (z. B. ein
+  auf dem Handy geändertes Label) beim Web-seitigen Speichern einfach verschwinden, weil "gleicher
+  Start-/Endzeitpunkt" als Duplikat übersprungen wurde.
 - **Versionsverlauf** (Einstellungen → "Versionsverlauf anzeigen"): `api.getBackupHistory()` +
   `api.getBackupVersion()` (Backend speichert jede gepushte Version für immer, `POST /api/backup`
   überschreibt nie – reines Append). Antippen einer Version ruft `restoreFromJsonWeb()` auf – anders
