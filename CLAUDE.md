@@ -129,6 +129,25 @@ zeichnet zusätzlich je markiertem Abschnitt eine gestrichelte `L.polyline` in d
 Ø-/Höchstgeschwindigkeit (`computeSegmentStats()`, spiegelt `Trip.segmentStats()`) – unabhängig von
 den Gesamt-Fahrt-Werten.
 
+## Datums-Überschriften in der Fahrtenliste (seit v2.1.0)
+
+Nur im Fahrten-Tab (`currentTab === "fahrten"`), NICHT in der kompakten "Letzte Fahrten"-Vorschau
+auf dem Home-Tab (dort weiterhin nur die neuesten 5 Einträge ohne Überschriften) - `renderTripList()`
+bekam dafür einen zweiten Parameter `showDateHeaders` (Default `false`, damit der Home-Aufruf
+unverändert bleibt), `renderTab()`s Fahrten-Tab-Zweig ruft `renderTripList(entries, true)`.
+
+Da `entries` (aus `buildTripListEntries()`) bereits absteigend nach `sortTimestamp` sortiert ist,
+reicht ein einfacher Kalendertag-Vergleich mit dem vorherigen Eintrag während des Durchlaufs
+(`localDayKey()` - über lokale Jahr/Monat/Tag-Komponenten, bewusst NICHT `ts / 86400000`, das würde
+bei Zeitzonen-Offsets ungleich UTC falsche Tagesgrenzen ziehen) - wechselt der Tag, wird eine
+`.trip-list-date-header`-Zeile vor den Eintrag eingefügt. Ein Gruppen-Eintrag zählt dabei zum Tag
+seiner NEUESTEN Mitgliedsfahrt (`sortTimestamp`), konsistent mit der bestehenden Sortierung.
+
+`formatDateHeading()` (volles Datum mit Wochentag) ist aus der bisher inline in
+`renderTripDetailScreen()` stehenden Formatierung extrahiert - beide Stellen nutzen jetzt dieselbe
+Funktion statt eines doppelt gepflegten Format-Strings. Spiegelt `formatTripDateHeading()` +
+`withDateHeaders()` in `data/TripGrouping.kt` der App.
+
 ## Fahrten gruppieren (seit v1.9.0, seit v2.0.0 nur noch Ansicht)
 
 1:1-Port der Anzeige-Seite von `data/TripGrouping.kt`/`TripGroupDetailScreen.kt`/

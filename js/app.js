@@ -668,7 +668,7 @@ function renderTab() {
     renderTripList(entries.slice(0, 5));
   } else {
     document.getElementById("stats-panel").classList.add("hidden");
-    renderTripList(entries);
+    renderTripList(entries, true);
   }
   renderMainMap(trips);
 }
@@ -708,6 +708,23 @@ function buildTripListEntries(trips, groups) {
   return [...groupEntries, ...singleEntries].sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 }
 
+/** Volles Datum mit Wochentag, gemeinsam genutzt von der Fahrt-Detail-Überschrift
+ * (`renderTripDetailScreen()`) und den Datums-Überschriften der Fahrtenliste (`renderTripList()`,
+ * seit v2.1.0) - ein einziges gepflegtes Format statt zweier identischer Aufrufe. */
+function formatDateHeading(timestampMillis) {
+  return new Date(timestampMillis).toLocaleDateString("de-DE", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+/** Kalendertag in LOKALER Zeit als vergleichbarer String (nicht `ts / 86400000` - das würde bei
+ * Zeitzonen-Offsets ungleich UTC falsche Tagesgrenzen ziehen). Genutzt von renderTripList()s
+ * Datums-Überschriften (seit v2.1.0), um zu erkennen, wann ein neuer Tag beginnt. */
+function localDayKey(timestampMillis) {
+  const d = new Date(timestampMillis);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 /**
  * Gesamt-Statistik über mehrere Fahrten (für eine Gruppe) - spiegelt List<Trip>.groupStats() aus
  * data/TripGrouping.kt: Summe km, Summe Fahrzeit (Gesamtdauer MINUS pausedMinutes je Fahrt - anders
@@ -745,7 +762,13 @@ function renderStats(trips) {
   `;
 }
 
-function renderTripList(entries) {
+/**
+ * `showDateHeaders` (seit v2.1.0, Default false - die kompakte Home-Vorschau bleibt dadurch ohne
+ * Änderung an ihrem Aufruf unverändert): fügt vor der jeweils ersten (neuesten) Fahrt/Gruppe eines
+ * Kalendertags eine `.trip-list-date-header`-Zeile ein - bei mehreren Einträgen desselben Tages nur
+ * einmal, da `entries` bereits absteigend nach `sortTimestamp` sortiert ist (buildTripListEntries()).
+ */
+function renderTripList(entries, showDateHeaders = false) {
   const list = document.getElementById("trip-list");
   list.innerHTML = "";
 
@@ -754,7 +777,19 @@ function renderTripList(entries) {
     return;
   }
 
+  let lastDayKey = null;
   entries.forEach((entry) => {
+    if (showDateHeaders) {
+      const dayKey = localDayKey(entry.sortTimestamp);
+      if (dayKey !== lastDayKey) {
+        const header = document.createElement("div");
+        header.className = "trip-list-date-header";
+        header.textContent = formatDateHeading(entry.sortTimestamp);
+        list.appendChild(header);
+        lastDayKey = dayKey;
+      }
+    }
+
     const row = document.createElement("div");
     row.className = "trip-row";
 
@@ -1042,9 +1077,7 @@ function openTripDetail(trip) {
 }
 
 function renderTripDetailScreen(trip) {
-  const dateStr = new Date(trip.startTimestamp).toLocaleDateString("de-DE", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
+  const dateStr = formatDateHeading(trip.startTimestamp);
   const startTime = new Date(trip.startTimestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   const endTime = new Date(trip.endTimestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   const durationMin = Math.round((trip.endTimestamp - trip.startTimestamp) / 60000);

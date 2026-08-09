@@ -8,6 +8,16 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.1.0] - 2026-08-09
+
+### Hinzugefügt
+- **Datums-Überschriften in der Fahrtenliste**: im Fahrten-Tab steht jetzt über der jeweils obersten
+  (neuesten) Fahrt/Gruppe eines Kalendertags das volle Datum (`renderTripList()`s neuer
+  `showDateHeaders`-Parameter) - bei mehreren Fahrten am selben Tag erscheint es nur einmal. Die
+  kompakte "Letzte Fahrten"-Vorschau auf dem Home-Tab bleibt bewusst unverändert ohne Überschriften.
+  Format spiegelt die bereits bestehende Fahrt-Detail-Überschrift (`formatDateHeading()`, neu aus
+  `renderTripDetailScreen()` extrahiert statt doppelt gepflegt).
+
 ## [2.0.0] - 2026-08-09
 
 ### Geändert (Breaking)

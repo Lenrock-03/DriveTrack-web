@@ -223,6 +223,19 @@ input:focus {
   margin-top: 2px;
 }
 
+/* Datums-Überschrift über der jeweils obersten (neuesten) Fahrt/Gruppe eines Kalendertags in der
+   vollständigen Fahrtenliste (seit v2.1.0, nur im Fahrten-Tab - siehe renderTripList()s
+   showDateHeaders-Parameter, die kompakte Home-Vorschau bleibt ohne Überschriften). */
+.trip-list-date-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 0 2px;
+}
+.trip-list-date-header:not(:first-child) {
+  margin-top: 8px;
+}
+
 .trip-list {
   display: flex;
   flex-direction: column;
