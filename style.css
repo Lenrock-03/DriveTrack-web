@@ -297,8 +297,26 @@ input:focus {
   cursor: pointer;
 }
 
+.edit-btn {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  z-index: 1;
+}
+.edit-btn:hover {
+  border-color: var(--primary);
+}
+
 .detail-info {
   padding: 0 20px 16px 20px;
+  position: relative;
 }
 .detail-info h2 {
   margin: 0 0 4px 0;
@@ -306,7 +324,85 @@ input:focus {
 .detail-info .date {
   color: var(--text-muted);
   font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
+/* Fahrt-Labels (z.B. "⛴ Fähre") als kleine Badges unter Datum/Uhrzeit - Farbe je Typ, siehe
+   labelColor() in app.js, spiegelt data/TripGeoMath.kt::labelColor() aus der Android-App. */
+.trip-label-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 14px;
+}
+.trip-label-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-variant);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+}
+.trip-label-badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Markierte Streckenabschnitte (z.B. Fährüberfahrt) - eigene Statistik + Farbpunkt, der dieselbe
+   Farbe wie die zugehörige Linie auf der Karte trägt (siehe renderRouteLine()). */
+.segment-list {
+  padding: 0 20px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.segment-list-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 2px;
+}
+.segment-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-variant);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.segment-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.segment-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.segment-row-text .title {
+  font-size: 0.85rem;
+}
+.segment-row-text .stats {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.segment-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.segment-delete-btn:hover {
+  color: var(--error);
 }
 
 .detail-stats {
@@ -548,4 +644,155 @@ input:focus {
 #settings-logout-btn {
   align-self: flex-start;
   padding: 6px 0;
+}
+
+/* --- Fahrt bearbeiten (seit v1.7.0) --- */
+.edit-content {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px 40px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.edit-content h2 {
+  margin: 0 0 4px 0;
+}
+.edit-section-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 14px 0 0 0;
+}
+.edit-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  background: var(--surface-variant);
+  color: var(--text-muted);
+  border: none;
+  border-radius: 16px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.chip.selected {
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 600;
+}
+
+.edit-map-wrap {
+  position: relative;
+  height: 220px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+#trip-edit-map {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  filter: contrast(1.15) brightness(1.65) saturate(1.15);
+}
+
+.edit-graph-wrap {
+  position: relative;
+  height: 160px;
+}
+#edit-graph-canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.edit-mark-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.edit-btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.secondary-btn {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.secondary-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.secondary-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.secondary-btn.full-width {
+  flex: none;
+  width: 100%;
+}
+
+.danger-btn {
+  width: 100%;
+  background: var(--error);
+  color: #1a1a1a;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.edit-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-variant);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+.edit-pending-row button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.edit-pending-row button:hover {
+  color: var(--error);
+}
+.edit-pending-row.clickable {
+  cursor: pointer;
+}
+.edit-pending-row.clickable:hover {
+  border: 1px solid var(--primary);
 }

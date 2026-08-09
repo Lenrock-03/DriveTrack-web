@@ -1,8 +1,10 @@
 # DriveTrack – Web-App
 
 Statische Web-Oberfläche (reines HTML/CSS/JavaScript, **kein Build-Step**, kein Framework) für
-DriveTrack. Läuft live auf `https://drivetrack.kornel-riedl.de`. Bewusst nur **lesend** – zeigt an,
-was die Android-App per Server-Backup hochgeladen hat (kein GPS im Browser, also kein Aufzeichnen hier).
+DriveTrack. Läuft live auf `https://drivetrack.kornel-riedl.de`. Zeigt an, was die Android-App per
+Server-Backup hochgeladen hat (kein GPS im Browser, also kein Aufzeichnen hier). Bis v1.6.0 bewusst
+rein lesend – seit **v1.7.0** kann hier auch bearbeitet werden (Zuschneiden/Markieren, siehe unten),
+der erste Schreibpfad der Web-App überhaupt. Weiterhin **kein** GPS-Tracking im Browser.
 
 ## Zugehörige Projekte
 
@@ -23,10 +25,13 @@ index.html          Alle Screens als einzelne divs (login/register/forgot/unlock
                      per JS ein-/ausgeblendet über die Klasse "hidden"
 style.css            Dunkles Theme, orange Akzentfarbe (#ff7a1a) – an die Android-App angelehnt
 js/crypto.js         PBKDF2 + AES-256-GCM über die Web Crypto API, spiegelt ServerCrypto.kt 1:1
-js/api.js            Fetch-Wrapper für die Backend-Endpunkte
+js/api.js            Fetch-Wrapper für die Backend-Endpunkte (inkl. uploadBackup/getBackupHistory/
+                     getBackupVersion seit v1.7.0, siehe unten)
 js/app.js            Komplette UI-Logik, State, Leaflet-Karten-Rendering, Geschwindigkeits-Graph
                      (Canvas, `buildSpeedSeries()`/`renderSpeedGraph()` – spiegelt `SpeedGraph()`
-                     aus `TripDetailScreen.kt` der App 1:1, gleiche Haversine-Formel)
+                     aus `TripDetailScreen.kt` der App 1:1, gleiche Haversine-Formel), seit v1.7.0
+                     zusätzlich der komplette Bearbeiten-Screen (`openTripEdit()` und alles was mit
+                     `edit`-Präfix beginnt) + der Schreibpfad (`pushBackupConflictSafe()`)
 ```
 
 Karten: **Leaflet.js** (über CDN eingebunden) statt osmdroid, gleiche CartoDB-Dark-Matter-Kacheln wie
@@ -93,6 +98,66 @@ sowie sofort beim Zurückwechseln in den Tab (`visibilitychange`), passend zum a
 der App (seit App 0.3.0). Nur aktiv, wenn eingeloggt+entsperrt UND man gerade auf Home/Fahrten ist
 (`canAutoRefreshNow()`) – bewusst NICHT in der Fahrt-Detail- oder Settings-Ansicht, damit kein
 Reload mitten in einer Interaktion die Ansicht wegreißt.
+
+## Fahrten bearbeiten + Abschnitte ansehen (seit v1.7.0)
+
+1:1-Port der Android-App-Funktionen aus 0.8.0–0.11.0 (`data/TripGeoMath.kt`/`TripEditScreen.kt`).
+
+- **Ansehen** (rein lesend, unabhängig vom Bearbeiten-Feature): `openTripDetail()` zeigt Fahrt-
+  Labels (`labelList()`/`labelIcon()`/`labelColor()` – Fähre blau/Pause bernstein/Nacht indigo/
+  sonst türkis, exakt dieselben Hex-Werte wie `labelColor()` in `data/TripGeoMath.kt`) als Badges,
+  `renderRouteLine()` zeichnet zusätzlich je markiertem Abschnitt eine gestrichelte `L.polyline` in
+  dessen Farbe (`renderSegmentMarkLines()`), `#trip-detail-segments` listet pro Abschnitt eine
+  eigene Distanz/Dauer/Ø-/Höchstgeschwindigkeit (`computeSegmentStats()`, spiegelt
+  `Trip.segmentStats()`) – unabhängig von den Gesamt-Fahrt-Werten.
+- **Bearbeiten** (`#trip-edit-screen`, `openTripEdit()`): eigene, vom Detail-Screen unabhängige
+  Leaflet-Karte (`editMap`) + ein eigenständiger Canvas-Graph (`renderEditGraph()` – bewusst NICHT
+  `renderSpeedGraph()` wiederverwendet, das ist fest an `detailMap`/`#speed-graph-canvas` gebunden;
+  stattdessen ein eigener, schlankerer Klon mit zusätzlichen A/B-Markern + hervorgehobenen
+  Bereichen). Tippen/Ziehen im Graph wählt eine Position, "Punkt A/B setzen" merkt sich deren
+  Zeitstempel. Zwei Kategorien:
+  - **Zuschneiden** (destruktiv): `applyTripEditPlanJs()` ist der JS-Port von
+    `applyTripEditPlan()` – identische Lauf-Gruppierung nach Original-Index-Nachbarschaft (gegen
+    Distanz-Artefakte über Schnittlücken), `pausedMinutes` akkumuliert, Gesamtdauer bleibt bei
+    einem Pause-Cut unverändert. Änderungen sammeln sich erst in `editPendingActions`
+    (Änderungsliste + Lösch-Icon), werden erst nach `confirm()` (kein eigenes Modal-System in
+    dieser App, siehe unten) tatsächlich angewendet.
+  - **Markieren** (nicht-destruktiv): Labels/Markierungen sind bis zum Verlassen der Seite nur
+    lokaler Entwurf (`editPendingLabels`/`editPendingMarks`), NICHT sofort gespeichert.
+    `attemptEditBack()` fragt bei ungespeicherten Änderungen nach ("Änderungen speichern?") –
+    bewusst `confirm()` statt eines dritten "Bleiben"-Buttons (OK = Speichern, Abbrechen =
+    Verwerfen), da diese App kein Custom-Modal-System hat und `alert()`/`confirm()`/`prompt()` an
+    anderen Stellen (Registrieren, Passwort-Reset) bereits akzeptierter Stil sind. Aus demselben
+    Grund nutzt "A–B als Abschnitt markieren…" einen `prompt()` statt eines Chip-Auswahl-Dialogs
+    wie in der App.
+  - Nach dem Speichern: `pushBackupConflictSafe()` (siehe unten), dann direkt zurück zur jetzt
+    aktualisierten Detailseite (`openTripDetail(updatedTrip)`).
+
+## Konfliktsicherer Schreibpfad + Versionsverlauf (seit v1.7.0)
+
+Die Web-App war bis v1.6.0 rein lesend – `syncFullBackupIfPossible()` in der App ist aber ein reiner
+Push ohne Konfliktprüfung, hätte also jede Web-Bearbeitung beim nächsten App-Sync stillschweigend
+überschrieben. Beide Seiten (App 0.11.0, hier v1.7.0) wurden deshalb gemeinsam auf **Pull-Check-
+Merge-Push** umgestellt:
+
+- `pushBackupConflictSafe()` in `js/app.js`: lädt vor jedem Push erst `GET /api/backup` (liefert
+  auch dessen `id`), vergleicht sie mit der zuletzt bekannten (`localStorage`-Key
+  `drivetrack_last_known_backup_id`, Pendant zu `ServerAuthPreferences.getLastKnownBackupId()` in
+  der App). Weicht sie ab (die App hat inzwischen gepusht), wird diese Version erst additiv in
+  `backupData` gemergt (`mergeBackupDataAdditive()` – Trips über Start-/Endzeitpunkt, Users/Cars
+  über Namen, dedupliziert nach demselben Muster wie `BackupExporter.importBackupFromJson()`, nie
+  überschrieben/gelöscht), bevor der eigentliche Push passiert. Anders als die App (die Fehler
+  still verschluckt) wirft diese Funktion bei einem Fehler – ein vom Nutzer ausgelöstes Speichern
+  soll sichtbar fehlschlagen können.
+- **Versionsverlauf** (Einstellungen → "Versionsverlauf anzeigen"): `api.getBackupHistory()` +
+  `api.getBackupVersion()` (Backend speichert jede gepushte Version für immer, `POST /api/backup`
+  überschreibt nie – reines Append). Antippen einer Version ruft `restoreFromJsonWeb()` auf – anders
+  als der additive Merge werden dabei bestehende Fahrten mit übereinstimmender Start-/Endzeit
+  gezielt auf den gewählten (älteren) Stand ZURÜCKGESETZT statt übersprungen, danach sofort
+  `pushBackupConflictSafe()`, damit die Wiederherstellung auch tatsächlich persistiert wird (die
+  Web-App hat anders als die App keine lokale DB, die den wiederhergestellten Stand über einen
+  Seiten-Reload hinweg behalten würde – ohne den Push wäre der nächste Reload wieder auf dem alten
+  Stand). Pendant zu `BackupExporter.restoreFromJson()`/`ServerBackupScreen.kt`s Versionsverlauf.
 
 ## Versionierung
 

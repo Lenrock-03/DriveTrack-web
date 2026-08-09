@@ -26,4 +26,11 @@ export const api = {
   verifyResetCode: (email, code) => request("/verify-reset-code", "POST", { email, code }),
   confirmReset: (data) => request("/confirm-reset", "POST", data),
   downloadBackup: (token) => request("/backup", "GET", null, token),
+  // Seit v1.7.0: erster Schreibpfad der Web-App (war bisher bewusst rein lesend, siehe CLAUDE.md) -
+  // mirrors ServerApi.kt (uploadBackup/backupHistory/downloadBackupVersion) in der Android-App 1:1.
+  uploadBackup: (token, ciphertext, iv) => request("/backup", "POST", { ciphertext, iv }, token),
+  // Liefert ein rohes JSON-*Array* (kein Objekt) - JSON.parse() oben handhabt das problemlos,
+  // anders als der Kotlin-Client (org.json.JSONObject), wo das erst ein Bug war (siehe App-CLAUDE.md).
+  getBackupHistory: (token) => request("/backup/history", "GET", null, token),
+  getBackupVersion: (token, id) => request(`/backup/${id}`, "GET", null, token),
 };

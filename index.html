@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.6.0" />
+<meta name="app-version" content="1.7.0" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -118,6 +118,7 @@
   <!-- Fahrt-Detail -->
   <div id="trip-detail-screen" class="overlay-screen hidden">
     <button class="back-btn" id="trip-detail-back">&larr; Zurück</button>
+    <button class="edit-btn hidden" id="trip-detail-edit">Bearbeiten</button>
     <div id="trip-detail-info" class="detail-info"></div>
     <div class="detail-map-wrap">
       <div id="trip-detail-map"></div>
@@ -136,6 +137,7 @@
         </div>
       </div>
     </div>
+    <div id="trip-detail-segments" class="segment-list hidden"></div>
     <div id="trip-detail-graph-section" class="graph-section">
       <div class="graph-header">
         <span class="graph-header-label">Geschwindigkeit</span>
@@ -146,6 +148,48 @@
         <div id="graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
         <canvas id="speed-graph-canvas"></canvas>
       </div>
+    </div>
+  </div>
+
+  <!-- Fahrt bearbeiten (seit v1.7.0) -->
+  <div id="trip-edit-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="trip-edit-back">&larr; Zurück</button>
+    <div class="edit-content">
+      <h2 id="trip-edit-title">Fahrt bearbeiten</h2>
+
+      <div class="edit-section-label">Markieren</div>
+      <p class="edit-hint">Labels für die ganze Fahrt - werden beim Verlassen dieser Seite gespeichert.</p>
+      <div id="edit-label-chips" class="chip-row"></div>
+
+      <div class="edit-map-wrap">
+        <div id="trip-edit-map"></div>
+      </div>
+
+      <div class="edit-graph-wrap">
+        <div id="edit-graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
+        <canvas id="edit-graph-canvas"></canvas>
+      </div>
+
+      <div id="edit-mark-info" class="edit-mark-info hidden"></div>
+
+      <div class="edit-btn-row">
+        <button id="edit-set-a-btn" class="secondary-btn" disabled>Punkt A setzen</button>
+        <button id="edit-set-b-btn" class="secondary-btn" disabled>Punkt B setzen</button>
+      </div>
+      <button id="edit-reset-selection-btn" class="link-btn hidden">Auswahl zurücksetzen</button>
+
+      <div class="edit-section-label">Zuschneiden</div>
+      <div class="edit-btn-row">
+        <button id="edit-trim-start-btn" class="secondary-btn" disabled>Anfang bis A abschneiden</button>
+        <button id="edit-trim-end-btn" class="secondary-btn" disabled>B bis Ende abschneiden</button>
+      </div>
+      <button id="edit-cut-pause-btn" class="secondary-btn full-width" disabled>A–B als Pause entfernen</button>
+
+      <div id="edit-pending-list" class="edit-pending-list hidden"></div>
+      <button id="edit-apply-btn" class="danger-btn hidden">Änderungen anwenden</button>
+
+      <button id="edit-mark-segment-btn" class="secondary-btn full-width" disabled>A–B als Abschnitt markieren…</button>
+      <div id="edit-segment-list" class="segment-list hidden"></div>
     </div>
   </div>
 
@@ -174,6 +218,16 @@
       <div class="settings-section">
         <button id="settings-reload-btn" class="primary-btn">Daten vom Server neu laden</button>
         <div id="settings-reload-status" class="settings-status-msg hidden">Daten neu geladen</div>
+      </div>
+
+      <div class="settings-group-header">🕓 Versionsverlauf</div>
+      <div class="settings-section">
+        <p class="auth-hint" style="margin:0">
+          Jede zuvor gesicherte Version bleibt erhalten - falls ein Synchronisierungskonflikt mal
+          etwas durcheinanderbringt, kannst du hier gezielt auf einen älteren Stand zurück.
+        </p>
+        <button id="settings-history-btn" class="primary-btn">Versionsverlauf anzeigen</button>
+        <div id="settings-history-list" class="edit-pending-list hidden"></div>
       </div>
 
       <div class="settings-group-header">ℹ️ Über</div>

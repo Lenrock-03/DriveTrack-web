@@ -8,6 +8,34 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.7.0] - 2026-08-09
+
+### Hinzugefügt
+- **Fahrten bearbeiten** – die Web-App war bisher bewusst rein lesend, das ändert sich hiermit
+  erstmals: neuer "Bearbeiten"-Button auf der Fahrt-Detailseite, 1:1 an `TripEditScreen.kt` der
+  Android-App angelehnt (App-Versionen 0.8.0–0.11.0):
+  - **Zuschneiden**: Anfang bis Punkt A abschneiden, Punkt B bis Ende abschneiden, oder A–B als
+    Pause aus der Mitte entfernen (destruktiv – Punkte werden endgültig entfernt). Änderungen
+    landen zuerst in einer einsehbaren Liste, werden erst nach "Änderungen anwenden" +
+    Bestätigung wirklich übernommen. Die Gesamtdauer bleibt beim Pause-Entfernen unverändert
+    (echte Uhrzeiten) – nur die Fahrzeit (und Ø-Geschwindigkeit) sinkt entsprechend.
+  - **Markieren**: Fahrt-Labels (⛴ Fähre, ☕ Pause gemacht, 🌙 Nachtfahrt oder eigener Text) sowie
+    markierte Streckenabschnitte mit eigener Statistik. Labels/Markierungen werden lokal
+    entworfen und erst beim Verlassen der Seite gespeichert (Rückfrage bei ungespeicherten
+    Änderungen).
+  - Nach dem Speichern sofort auf der Detailseite sichtbar.
+- **Markierte Abschnitte ansehen**: Fahrt-Detailseite zeigt Labels als Badges, markierte
+  Streckenabschnitte als gestrichelte, je nach Typ farbige Linie auf der Karte (Fähre blau, Pause
+  bernstein, Nachtfahrt indigo) sowie eine eigene Distanz-/Dauer-/Geschwindigkeits-Statistik pro
+  Abschnitt – unabhängig vom Bearbeiten-Feature, rein anzeigend.
+- **Versionsverlauf** in den Einstellungen: jede zuvor gesicherte Server-Version bleibt für immer
+  abrufbar, antippen setzt Fahrten mit übereinstimmender Start-/Endzeit gezielt auf diesen Stand
+  zurück – das Sicherheitsnetz bei Synchronisierungskonflikten mit der App.
+- **Konfliktsicherer Schreibpfad**: vor jedem Speichern wird erst geprüft, ob der Server
+  inzwischen eine dieser Sitzung unbekannte, neuere Version hat (z. B. von der Android-App
+  gepusht) – falls ja, wird sie erst additiv gemergt, bevor der eigene Stand hochgeladen wird.
+  Nichts geht dabei verloren, jede Version bleibt in der Backup-Historie erhalten.
+
 ## [1.6.0] - 2026-08-06
 
 ### Geändert

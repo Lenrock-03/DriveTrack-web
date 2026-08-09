@@ -44,6 +44,7 @@ const screens = {
   unlock: document.getElementById("unlock-screen"),
   main: document.getElementById("main-app"),
   detail: document.getElementById("trip-detail-screen"),
+  edit: document.getElementById("trip-edit-screen"),
   settings: document.getElementById("settings-screen"),
 };
 function showScreen(name) {
@@ -266,6 +267,100 @@ async function loadAndRenderBackup() {
     cars: parsed.cars || [],
     trips: parsed.trips || [],
   };
+  if (result.id != null) setLastKnownBackupId(result.id);
+  renderCarSelector();
+  renderTab();
+}
+
+// --- Schreibpfad (seit v1.7.0) ---
+// Pendant zu ServerAuthPreferences.getLastKnownBackupId()/setLastKnownBackupId() in der App -
+// die Server-Backup-"id", die dieses Gerät (dieser Browser) zuletzt gesehen/gepusht hat.
+const LAST_KNOWN_BACKUP_ID_KEY = "drivetrack_last_known_backup_id";
+function getLastKnownBackupId() {
+  const v = localStorage.getItem(LAST_KNOWN_BACKUP_ID_KEY);
+  return v === null ? null : Number(v);
+}
+function setLastKnownBackupId(id) {
+  localStorage.setItem(LAST_KNOWN_BACKUP_ID_KEY, String(id));
+}
+
+/** Kleinste freie Id für neu eingefügte Users/Cars beim additiven Merge (siehe unten). */
+function nextLocalId(list) {
+  return list.reduce((max, x) => Math.max(max, Number(x.id) || 0), 0) + 1;
+}
+
+/**
+ * Additive Merge: Trips über Start-/Endzeitpunkt abgleichen, Users/Cars über Namen - identische
+ * Regel wie BackupExporter.importBackupFromJson() in der App. Mutiert `target` in place, fügt nur
+ * fehlende Einträge hinzu, überschreibt/löscht nie Bestehendes. Trips tragen bewusst kein "id"-Feld
+ * im Backup-JSON (App re-identifiziert sie beim Import über Start-/Endzeitpunkt) - hier genauso.
+ */
+function mergeBackupDataAdditive(target, remote) {
+  const userIdMap = new Map();
+  (remote.users || []).forEach((u) => {
+    const existing = target.users.find((tu) => tu.name.toLowerCase() === u.name.toLowerCase());
+    if (existing) {
+      userIdMap.set(u.id, existing.id);
+    } else {
+      const newId = nextLocalId(target.users);
+      target.users.push({ id: newId, name: u.name });
+      userIdMap.set(u.id, newId);
+    }
+  });
+
+  const carIdMap = new Map();
+  (remote.cars || []).forEach((c) => {
+    const existing = target.cars.find((tc) => tc.name.toLowerCase() === c.name.toLowerCase());
+    if (existing) {
+      carIdMap.set(c.id, existing.id);
+    } else {
+      const newId = nextLocalId(target.cars);
+      target.cars.push({ id: newId, name: c.name });
+      carIdMap.set(c.id, newId);
+    }
+  });
+
+  (remote.trips || []).forEach((t) => {
+    const isDuplicate = target.trips.some(
+      (existing) => existing.startTimestamp === t.startTimestamp && existing.endTimestamp === t.endTimestamp
+    );
+    if (isDuplicate) return;
+    const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
+    target.trips.push({ ...t, carId: newCarId });
+  });
+}
+
+/**
+ * Pull-Check-Merge-Push, identisch zu ServerSync.syncFullBackupIfPossible() in der App: lädt erst
+ * die aktuellste Server-Version, vergleicht ihre Id mit der zuletzt bekannten. Weicht sie ab (ein
+ * anderes Gerät - z.B. das Handy - hat inzwischen gepusht), wird sie erst additiv in `backupData`
+ * gemergt, BEVOR der eigentliche Push passiert - sonst würde jeder Speichervorgang unbemerkt
+ * Bearbeitungen von woanders überschreiben. Wirft bei einem Fehler (anders als die App, die das
+ * still verschluckt) - hier soll ein fehlgeschlagenes Speichern dem Nutzer sichtbar gemeldet werden.
+ */
+async function pushBackupConflictSafe() {
+  if (!session || !dek) throw new Error("Nicht eingeloggt/entsperrt");
+
+  const latest = await api.downloadBackup(session.token).catch(() => null);
+  if (latest && latest.id != null) {
+    const lastKnown = getLastKnownBackupId();
+    if (Number(latest.id) !== Number(lastKnown)) {
+      const blob = { ciphertextBase64: latest.ciphertext, ivBase64: latest.iv };
+      const remoteJson = await cryptoUtil.decryptWithDek(blob, dek);
+      mergeBackupDataAdditive(backupData, JSON.parse(remoteJson));
+    }
+  }
+
+  const json = JSON.stringify({
+    version: 1,
+    users: backupData.users,
+    cars: backupData.cars,
+    trips: backupData.trips,
+  });
+  const encrypted = await cryptoUtil.encryptWithDek(json, dek);
+  const uploadResult = await api.uploadBackup(session.token, encrypted.ciphertextBase64, encrypted.ivBase64);
+  if (uploadResult && uploadResult.id != null) setLastKnownBackupId(uploadResult.id);
+
   renderCarSelector();
   renderTab();
 }
@@ -289,6 +384,112 @@ document.getElementById("settings-btn").addEventListener("click", () => {
   showScreen("settings");
 });
 document.getElementById("settings-back").addEventListener("click", () => showScreen("main"));
+
+// --- Versionsverlauf (seit v1.7.0) ---
+// "Backup-Sicherung ohne Bearbeitungen, die bei Konflikten greift": jede zuvor gesicherte Version
+// bleibt für immer erhalten (POST /api/backup fügt beim Backend nur hinzu, überschreibt nie) -
+// hier als manueller Wiederherstellen-Hebel freigelegt, Pendant zu ServerBackupScreen.kt in der App.
+
+/**
+ * Anders als der normale additive Merge (mergeBackupDataAdditive) werden bestehende Fahrten mit
+ * übereinstimmender Start-/Endzeit hier NICHT übersprungen, sondern auf den Stand der gewählten
+ * (i.d.R. älteren) Version zurückgesetzt - der eigentliche Zweck des Versionsverlaufs. Mutiert
+ * backupData in place, gibt zurück wie viele Fahrten zurückgesetzt bzw. neu ergänzt wurden.
+ */
+function restoreFromJsonWeb(jsonText) {
+  const remote = JSON.parse(jsonText);
+
+  const userIdMap = new Map();
+  (remote.users || []).forEach((u) => {
+    const existing = backupData.users.find((tu) => tu.name.toLowerCase() === u.name.toLowerCase());
+    if (existing) userIdMap.set(u.id, existing.id);
+    else {
+      const newId = nextLocalId(backupData.users);
+      backupData.users.push({ id: newId, name: u.name });
+      userIdMap.set(u.id, newId);
+    }
+  });
+
+  const carIdMap = new Map();
+  (remote.cars || []).forEach((c) => {
+    const existing = backupData.cars.find((tc) => tc.name.toLowerCase() === c.name.toLowerCase());
+    if (existing) carIdMap.set(c.id, existing.id);
+    else {
+      const newId = nextLocalId(backupData.cars);
+      backupData.cars.push({ id: newId, name: c.name });
+      carIdMap.set(c.id, newId);
+    }
+  });
+
+  let restored = 0;
+  let added = 0;
+  (remote.trips || []).forEach((t) => {
+    const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
+    const tripObj = { ...t, carId: newCarId };
+    const existingIdx = backupData.trips.findIndex(
+      (existing) => existing.startTimestamp === t.startTimestamp && existing.endTimestamp === t.endTimestamp
+    );
+    if (existingIdx !== -1) {
+      backupData.trips[existingIdx] = tripObj;
+      restored++;
+    } else {
+      backupData.trips.push(tripObj);
+      added++;
+    }
+  });
+
+  return { restored, added };
+}
+
+document.getElementById("settings-history-btn").addEventListener("click", async () => {
+  if (!session || !dek) return;
+  const listEl = document.getElementById("settings-history-list");
+  listEl.classList.remove("hidden");
+  listEl.innerHTML = '<div class="edit-pending-row"><span>Lädt…</span></div>';
+
+  let history;
+  try {
+    history = await api.getBackupHistory(session.token); // rohes Array [{id, createdAt}, ...]
+  } catch (e) {
+    listEl.innerHTML = '<div class="edit-pending-row"><span>Verlauf konnte nicht geladen werden.</span></div>';
+    return;
+  }
+  if (!Array.isArray(history) || history.length === 0) {
+    listEl.innerHTML = '<div class="edit-pending-row"><span>Kein Verlauf vorhanden.</span></div>';
+    return;
+  }
+
+  listEl.innerHTML = history
+    .map(
+      (v) =>
+        `<div class="edit-pending-row clickable" data-id="${v.id}"><span>${new Date(v.createdAt).toLocaleString("de-DE")}</span></div>`
+    )
+    .join("");
+  listEl.querySelectorAll(".edit-pending-row[data-id]").forEach((row) => {
+    row.addEventListener("click", async () => {
+      const id = Number(row.dataset.id);
+      if (
+        !confirm(
+          "Bestehende Fahrten mit übereinstimmender Start-/Endzeit werden auf diesen Stand " +
+            "zurückgesetzt. Fahrten, die nur in dieser Version existieren, werden ergänzt. Nichts wird gelöscht."
+        )
+      ) {
+        return;
+      }
+      try {
+        const result = await api.getBackupVersion(session.token, id);
+        const blob = { ciphertextBase64: result.ciphertext, ivBase64: result.iv };
+        const json = await cryptoUtil.decryptWithDek(blob, dek);
+        const { restored, added } = restoreFromJsonWeb(json);
+        await pushBackupConflictSafe();
+        alert(`${restored} Fahrt(en) zurückgesetzt${added > 0 ? `, ${added} ergänzt` : ""}.`);
+        listEl.classList.add("hidden");
+      } catch (e) {
+        alert("Wiederherstellen fehlgeschlagen: " + (e.message || e));
+      }
+    });
+  });
+});
 
 // --- Tabs ---
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -430,6 +631,149 @@ function getTripSpeedSeries(trip) {
   return filtered.map((p) =>
     p.speedKmh > PLAUSIBLE_MAX_CAR_KMH ? { ...p, speedKmh: PLAUSIBLE_MAX_CAR_KMH } : p
   );
+}
+
+// --- Labels & markierte Streckenabschnitte (seit v1.7.0 / App 0.8.0-0.11.0) ---
+// JS-Port von data/TripGeoMath.kt (Trip.labelList()/labelIcon()/labelColor()/segmentStats()) -
+// dieselbe Logik, damit Web und App optisch identisch anzeigen.
+function labelList(trip) {
+  return (trip.labels || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function labelIcon(label) {
+  const lower = label.toLowerCase();
+  if (lower.includes("fähre") || lower.includes("faehre")) return "⛴";
+  if (lower.includes("pause")) return "☕";
+  if (lower.includes("nacht")) return "🌙";
+  return "🏷️";
+}
+
+/** Feste Signalfarbe je Markierungs-Typ, spiegelt labelColor() aus data/TripGeoMath.kt. */
+function labelColor(label) {
+  const lower = label.toLowerCase();
+  if (lower.includes("fähre") || lower.includes("faehre")) return "#2979FF";
+  if (lower.includes("pause")) return "#FFB300";
+  if (lower.includes("nacht")) return "#7C4DFF";
+  return "#26C6DA";
+}
+
+function parseSegmentMarks(trip) {
+  try {
+    const arr = JSON.parse(trip.segmentMarksJson || "[]");
+    return arr.map((m) => ({ label: m.label, startTs: m.startTs, endTs: m.endTs }));
+  } catch (e) {
+    return [];
+  }
+}
+
+function segmentMarksToJson(marks) {
+  return JSON.stringify(marks.map((m) => ({ label: m.label, startTs: m.startTs, endTs: m.endTs })));
+}
+
+/**
+ * Distanz/Dauer/Ø-/Höchstgeschwindigkeit NUR innerhalb eines markierten Abschnitts - unabhängig
+ * von den Gesamt-Fahrt-Werten (die den Abschnitt weiterhin mit einschließen, siehe
+ * recomputeMaxSpeedExcludingMarks()). Spiegelt Trip.segmentStats() aus TripGeoMath.kt.
+ */
+function computeSegmentStats(trip, mark) {
+  const durationMinutes = Math.max(0, Math.round((mark.endTs - mark.startTs) / 60000));
+  const raw = parseTripPointsWithTime(trip).filter((p) => p.ts >= mark.startTs && p.ts <= mark.endTs);
+  if (raw.length < 2) return { distanceKm: 0, durationMinutes, avgSpeedKmh: 0, maxSpeedKmh: 0 };
+
+  let distanceMeters = 0;
+  let maxSpeedKmh = 0;
+  for (let i = 1; i < raw.length; i++) {
+    distanceMeters += haversineMeters(raw[i - 1], raw[i]);
+    const speed = Math.min(segmentSpeedKmh(raw[i - 1], raw[i]), PLAUSIBLE_MAX_CAR_KMH);
+    if (speed > maxSpeedKmh) maxSpeedKmh = speed;
+  }
+  const avgSpeedKmh = durationMinutes > 0 ? (distanceMeters / 1000) / (durationMinutes / 60) : 0;
+  return { distanceKm: distanceMeters / 1000, durationMinutes, avgSpeedKmh, maxSpeedKmh };
+}
+
+/**
+ * Höchstgeschwindigkeit der GESAMTEN Fahrt neu berechnet, wobei Segmente innerhalb eines
+ * markierten Abschnitts (z.B. Fähre) ausgeschlossen werden - spiegelt
+ * recomputeMaxSpeedExcludingMarks() aus TripGeoMath.kt. Distanz/Dauer/Ø-Geschwindigkeit der Fahrt
+ * bleiben davon unberührt.
+ */
+function recomputeMaxSpeedExcludingMarks(trip, marks) {
+  const raw = parseTripPointsWithTime(trip);
+  if (raw.length < 2) return trip.maxSpeedKmh;
+  const inAnyMark = (ts) => marks.some((m) => ts >= m.startTs && ts <= m.endTs);
+  let max = 0;
+  for (let i = 1; i < raw.length; i++) {
+    if (inAnyMark(raw[i - 1].ts) || inAnyMark(raw[i].ts)) continue;
+    const speed = Math.min(segmentSpeedKmh(raw[i - 1], raw[i]), PLAUSIBLE_MAX_CAR_KMH);
+    if (speed > max) max = speed;
+  }
+  return max;
+}
+
+function renderLabelBadges(trip) {
+  const labels = labelList(trip);
+  const infoEl = document.getElementById("trip-detail-info");
+  const existing = infoEl.querySelector(".trip-label-badges");
+  if (existing) existing.remove();
+  if (labels.length === 0) return;
+
+  const row = document.createElement("div");
+  row.className = "trip-label-badges";
+  row.innerHTML = labels
+    .map(
+      (label) =>
+        `<span class="trip-label-badge"><span class="dot" style="background:${labelColor(label)}"></span>${labelIcon(label)} ${escapeHtml(label)}</span>`
+    )
+    .join("");
+  infoEl.querySelector(".date").insertAdjacentElement("afterend", row);
+}
+
+function renderSegmentList(trip) {
+  const container = document.getElementById("trip-detail-segments");
+  const marks = parseSegmentMarks(trip);
+  if (marks.length === 0) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+  container.classList.remove("hidden");
+  container.innerHTML =
+    '<div class="segment-list-header">Markierte Abschnitte</div>' +
+    marks
+      .map((mark) => {
+        const stats = computeSegmentStats(trip, mark);
+        const startTime = new Date(mark.startTs).toLocaleTimeString("de-DE");
+        const endTime = new Date(mark.endTs).toLocaleTimeString("de-DE");
+        return `
+          <div class="segment-row">
+            <span class="segment-color-dot" style="background:${labelColor(mark.label)}"></span>
+            <div class="segment-row-text">
+              <div class="title">${labelIcon(mark.label)} ${escapeHtml(mark.label)}: ${startTime}–${endTime}</div>
+              <div class="stats">${stats.distanceKm.toFixed(1)} km · ${formatTripDuration(stats.durationMinutes)} · Ø ${Math.round(stats.avgSpeedKmh)} km/h · Max ${Math.round(stats.maxSpeedKmh)} km/h</div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+}
+
+/** Baut je markiertem Abschnitt eine gestrichelte Polyline in fester Signalfarbe (labelColor()). */
+function renderSegmentMarkLines(trip) {
+  const marks = parseSegmentMarks(trip);
+  if (marks.length === 0) return;
+  const raw = parseTripPointsWithTime(trip);
+  if (raw.length < 2) return;
+
+  marks.forEach((mark) => {
+    const inRange = raw.filter((p) => p.ts >= mark.startTs && p.ts <= mark.endTs).map((p) => [p.lat, p.lon]);
+    if (inRange.length < 2) return;
+    const line = L.polyline(inRange, {
+      color: labelColor(mark.label),
+      weight: 6,
+      dashArray: "10, 8",
+    }).addTo(detailMap);
+    routeLineLayers.push(line);
+  });
 }
 
 // --- Rendering ---
@@ -656,6 +1000,7 @@ function renderRouteLine(trip, points) {
 
   routeLineLayers.push(hoverLine);
   setupRouteHover(hoverLine, trip);
+  renderSegmentMarkLines(trip);
 }
 
 /**
@@ -713,6 +1058,10 @@ function openTripDetail(trip) {
       <div class="stat-tile"><div class="value">${trip.maxSpeedKmh.toFixed(0)} km/h</div><div class="label">Max. Geschwindigkeit</div></div>
     </div>
   `;
+
+  renderLabelBadges(trip);
+  renderSegmentList(trip);
+  document.getElementById("trip-detail-edit").classList.remove("hidden");
 
   showScreen("detail");
   applyGraphCollapsedState();
@@ -914,6 +1263,660 @@ document.getElementById("trip-detail-back").addEventListener("click", () => {
   setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
 });
 
+// --- Fahrt bearbeiten (seit v1.7.0) ---
+// 1:1-Port von TripEditScreen.kt der Android-App: Zuschneiden (Anfang/Ende kürzen, Pause aus der
+// Mitte entfernen - destruktiv, JS-Port von applyTripEditPlan()) und Markieren (Fahrt-Labels +
+// Streckenabschnitte - nicht-destruktiv, lokaler Entwurf bis zum Verlassen der Seite). Bewusst
+// native confirm()/prompt() statt eigener Modal-Komponenten (kein Modal-System in dieser App
+// vorhanden, alert() wird an anderen Stellen bereits genutzt - siehe Registrieren/Passwort-Reset).
+const LABEL_PRESETS = ["⛴ Fähre", "☕ Pause gemacht", "🌙 Nachtfahrt"];
+
+let editTrip = null;
+let editPendingLabels = [];
+let editPendingMarks = [];
+let editMarkA = null;
+let editMarkB = null;
+let editPendingActions = []; // { type: "trimStart"|"trimEnd"|"cut", ts|start/end, description }
+let editMap = null;
+let editMapLayers = [];
+let editMapAMarker = null;
+let editMapBMarker = null;
+let editGraphState = null; // { points, scaleMax, totalDuration, startTs, selectedIndex }
+let editGraphRedraw = null;
+
+/**
+ * JS-Port von applyTripEditPlan() aus data/TripGeoMath.kt: schneidet Anfang/Ende und/oder
+ * Pausen-Bereiche aus den GPS-Punkten heraus, berechnet Distanz/Dauer/Geschwindigkeit neu. `trip`
+ * muss bereits alle aktuellen (ggf. noch nicht gespeicherten) Labels/Markierungen tragen. Gibt
+ * null zurück, wenn der Plan ungültig ist oder zu wenige Punkte übrig blieben.
+ */
+function applyTripEditPlanJs(trip, plan) {
+  const raw = parseTripPointsWithTime(trip);
+  if (raw.length < 2) return null;
+
+  const newStartTs = plan.trimStartTs != null ? plan.trimStartTs : raw[0].ts;
+  const newEndTs = plan.trimEndTs != null ? plan.trimEndTs : raw[raw.length - 1].ts;
+  if (newStartTs >= newEndTs) return null;
+
+  const excluded = (plan.pauseCuts || [])
+    .map(([a, b]) => [Math.min(a, b), Math.max(a, b)])
+    .map(([s, e]) => [Math.min(Math.max(s, newStartTs), newEndTs), Math.min(Math.max(e, newStartTs), newEndTs)])
+    .filter(([s, e]) => s < e);
+
+  const keptIndices = [];
+  for (let i = 0; i < raw.length; i++) {
+    const ts = raw[i].ts;
+    if (ts < newStartTs || ts > newEndTs) continue;
+    if (excluded.some(([s, e]) => ts >= s && ts <= e)) continue;
+    keptIndices.push(i);
+  }
+  if (keptIndices.length < 2) return null;
+
+  // Zusammenhängende Läufe (Original-Index-Nachbarschaft), damit Distanz nie über eine
+  // Schnittlücke hinweg summiert wird (sonst Distanz-Artefakt durch "Teleport"-Strecke).
+  const runs = [];
+  keptIndices.forEach((idx) => {
+    const lastRun = runs[runs.length - 1];
+    if (lastRun && idx === lastRun[lastRun.length - 1] + 1) lastRun.push(idx);
+    else runs.push([idx]);
+  });
+
+  const marksForMaxSpeed = parseSegmentMarks(trip);
+  let totalMeters = 0;
+  let maxSpeed = 0;
+  runs.forEach((run) => {
+    for (let k = 1; k < run.length; k++) {
+      const p1 = raw[run[k - 1]];
+      const p2 = raw[run[k]];
+      totalMeters += haversineMeters(p1, p2);
+      const touchesMark = marksForMaxSpeed.some(
+        (m) => (p1.ts >= m.startTs && p1.ts <= m.endTs) || (p2.ts >= m.startTs && p2.ts <= m.endTs)
+      );
+      if (!touchesMark) {
+        const speed = Math.min(segmentSpeedKmh(p1, p2), PLAUSIBLE_MAX_CAR_KMH);
+        if (speed > maxSpeed) maxSpeed = speed;
+      }
+    }
+  });
+
+  const keptPoints = keptIndices.map((i) => raw[i]);
+  const newDurationMinutes = (newEndTs - newStartTs) / 60000;
+  const cutMinutes = excluded.reduce((sum, [s, e]) => sum + (e - s) / 60000, 0);
+  const newPausedMinutes = (trip.pausedMinutes || 0) + cutMinutes;
+  const drivingMinutes = Math.max(0, newDurationMinutes - newPausedMinutes);
+  const avgSpeedKmh = drivingMinutes > 0 ? totalMeters / 1000 / (drivingMinutes / 60) : 0;
+
+  const newMarks = marksForMaxSpeed
+    .map((m) => {
+      const s = Math.min(Math.max(m.startTs, newStartTs), newEndTs);
+      const e = Math.min(Math.max(m.endTs, newStartTs), newEndTs);
+      if (s >= e) return null;
+      if (excluded.some(([es, ee]) => s >= es && e <= ee)) return null;
+      return { label: m.label, startTs: s, endTs: e };
+    })
+    .filter(Boolean);
+
+  return {
+    ...trip,
+    startTimestamp: newStartTs,
+    endTimestamp: newEndTs,
+    distanceMeters: totalMeters,
+    avgSpeedKmh,
+    maxSpeedKmh: maxSpeed > 0 ? maxSpeed : trip.maxSpeedKmh,
+    pausedMinutes: newPausedMinutes,
+    segmentMarksJson: segmentMarksToJson(newMarks),
+    gpxTrackJson: JSON.stringify(keptPoints.map((p) => ({ lat: p.lat, lon: p.lon, ts: p.ts }))),
+  };
+}
+
+function replaceTripInBackupData(oldTrip, newTrip) {
+  const idx = backupData.trips.indexOf(oldTrip);
+  if (idx !== -1) backupData.trips[idx] = newTrip;
+  else backupData.trips.push(newTrip);
+}
+
+function pendingLabelsChanged() {
+  return JSON.stringify(editPendingLabels) !== JSON.stringify(labelList(editTrip));
+}
+function pendingMarksChanged() {
+  return JSON.stringify(editPendingMarks) !== JSON.stringify(parseSegmentMarks(editTrip));
+}
+
+function openTripEdit(trip) {
+  editTrip = trip;
+  editPendingLabels = labelList(trip);
+  editPendingMarks = parseSegmentMarks(trip);
+  editMarkA = null;
+  editMarkB = null;
+  editPendingActions = [];
+  // Explizit zurückgesetzt (nicht erst durch renderEditGraph() im setTimeout unten) - sonst
+  // würden "Punkt A/B setzen" für einen kurzen Moment mit dem Graph-State der VORHERIGEN Fahrt
+  // aktiviert bleiben, bis der neue Graph nach 50ms tatsächlich gezeichnet ist.
+  editGraphState = null;
+
+  document.getElementById("trip-edit-title").textContent = `Bearbeiten: ${trip.name}`;
+  renderEditLabelChips();
+  renderEditMarkInfo();
+  renderEditPendingActions();
+  renderEditSegmentList();
+  updateEditControlsEnabled();
+
+  showScreen("edit");
+
+  setTimeout(() => {
+    if (!editMap) {
+      editMap = L.map("trip-edit-map", { zoomControl: true, preferCanvas: true });
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd",
+        maxZoom: 20,
+        attribution: "&copy; OpenStreetMap &copy; CARTO",
+      }).addTo(editMap);
+    } else {
+      editMapLayers.forEach((l) => editMap.removeLayer(l));
+      editMapLayers = [];
+      editMapAMarker = null;
+      editMapBMarker = null;
+    }
+    const points = parseTripPoints(trip);
+    if (points.length >= 2) {
+      const line = L.polyline(points, { color: "#ff7a1a", weight: 4 }).addTo(editMap);
+      editMapLayers.push(line);
+      renderEditMapSegmentLines();
+      editMap.fitBounds(points, { padding: [20, 20] });
+    }
+    editMap.invalidateSize();
+    renderEditGraph(trip);
+  }, 50);
+}
+
+function renderEditMapSegmentLines() {
+  const raw = parseTripPointsWithTime(editTrip);
+  editPendingMarks.forEach((mark) => {
+    const inRange = raw.filter((p) => p.ts >= mark.startTs && p.ts <= mark.endTs).map((p) => [p.lat, p.lon]);
+    if (inRange.length < 2) return;
+    const line = L.polyline(inRange, { color: labelColor(mark.label), weight: 6, dashArray: "10, 8" }).addTo(editMap);
+    editMapLayers.push(line);
+  });
+}
+
+function redrawEditMapMarks() {
+  if (!editMap) return;
+  editMapLayers.forEach((l) => editMap.removeLayer(l));
+  editMapLayers = [];
+  editMapAMarker = null;
+  editMapBMarker = null;
+  const points = parseTripPoints(editTrip);
+  if (points.length >= 2) {
+    editMapLayers.push(L.polyline(points, { color: "#ff7a1a", weight: 4 }).addTo(editMap));
+  }
+  renderEditMapSegmentLines();
+  updateEditAbMapMarkers();
+}
+
+function updateEditAbMapMarkers() {
+  if (!editMap) return;
+  const raw = parseTripPointsWithTime(editTrip);
+  const nearest = (ts) => {
+    let best = null, bestDiff = Infinity;
+    raw.forEach((p) => { const d = Math.abs(p.ts - ts); if (d < bestDiff) { bestDiff = d; best = p; } });
+    return best;
+  };
+  if (editMarkA != null) {
+    const p = nearest(editMarkA);
+    if (p) {
+      if (!editMapAMarker) editMapAMarker = L.circleMarker([p.lat, p.lon], { radius: 8, color: "#fff", weight: 2, fillColor: "#7C4DFF", fillOpacity: 1 }).addTo(editMap);
+      else editMapAMarker.setLatLng([p.lat, p.lon]);
+    }
+  } else if (editMapAMarker) {
+    editMap.removeLayer(editMapAMarker);
+    editMapAMarker = null;
+  }
+  if (editMarkB != null) {
+    const p = nearest(editMarkB);
+    if (p) {
+      if (!editMapBMarker) editMapBMarker = L.circleMarker([p.lat, p.lon], { radius: 8, color: "#fff", weight: 2, fillColor: "#7C4DFF", fillOpacity: 1 }).addTo(editMap);
+      else editMapBMarker.setLatLng([p.lat, p.lon]);
+    }
+  } else if (editMapBMarker) {
+    editMap.removeLayer(editMapBMarker);
+    editMapBMarker = null;
+  }
+}
+
+/** Zeichnet den Bearbeiten-Graph: eigenständig statt renderSpeedGraph() wiederzuverwenden, da hier
+ * zusätzlich A/B-Marker + hervorgehobene Bereiche gebraucht werden und keine Fixierung auf
+ * detailMap/#speed-graph-canvas sinnvoll wäre. */
+function renderEditGraph(trip) {
+  const canvas = document.getElementById("edit-graph-canvas");
+  const emptyHint = document.getElementById("edit-graph-empty-hint");
+  const ctx = canvas.getContext("2d");
+  const points = getTripSpeedSeries(trip);
+
+  if (points.length < 2) {
+    canvas.classList.add("hidden");
+    emptyHint.classList.remove("hidden");
+    editGraphState = null;
+    editGraphRedraw = null;
+    return;
+  }
+  canvas.classList.remove("hidden");
+  emptyHint.classList.add("hidden");
+
+  const maxSpeed = Math.max(1, trip.maxSpeedKmh || 0);
+  const scaleMax = niceCeilSpeed(maxSpeed);
+  const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
+  const startTs = points[0].timestamp;
+  const leftGutter = 34;
+  editGraphState = { points, scaleMax, totalDuration, startTs, selectedIndex: points.length - 1 };
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function xForTs(ts, w) {
+    const offsetSeconds = Math.min(totalDuration, Math.max(0, (ts - startTs) / 1000));
+    const plotW = Math.max(1, w - leftGutter);
+    return leftGutter + (offsetSeconds / totalDuration) * plotW;
+  }
+
+  function draw() {
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    ctx.clearRect(0, 0, w, h);
+    const plotW = Math.max(1, w - leftGutter);
+
+    // Hervorgehobene Bereiche zuerst (bestehende/geplante Markierungen + geplante Pausen-Cuts)
+    editPendingMarks.forEach((m) => {
+      const x1 = xForTs(m.startTs, w), x2 = xForTs(m.endTs, w);
+      ctx.fillStyle = "rgba(38, 198, 218, 0.18)";
+      ctx.fillRect(x1, 0, x2 - x1, h);
+    });
+    editPendingActions.filter((a) => a.type === "cut").forEach((a) => {
+      const x1 = xForTs(a.start, w), x2 = xForTs(a.end, w);
+      ctx.fillStyle = "rgba(255, 179, 0, 0.2)";
+      ctx.fillRect(x1, 0, x2 - x1, h);
+    });
+
+    ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    [0, 1 / 3, 2 / 3, 1].forEach((frac) => {
+      const y = h - frac * h;
+      const value = Math.round(scaleMax * frac);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftGutter, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(237, 224, 212, 0.55)";
+      ctx.fillText(`${value}`, leftGutter - 6, Math.min(h - 6, Math.max(7, y)));
+    });
+
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = leftGutter + (p.offsetSeconds / totalDuration) * plotW;
+      const y = h - Math.min(1, p.speedKmh / scaleMax) * h;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // A/B-Bearbeitungsmarker
+    [["A", editMarkA], ["B", editMarkB]].forEach(([label, ts]) => {
+      if (ts == null) return;
+      const x = xForTs(ts, w);
+      ctx.save();
+      ctx.strokeStyle = "#b39cff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "#b39cff";
+      ctx.textAlign = "left";
+      ctx.fillText(label, x + 3, 10);
+    });
+
+    const sel = points[editGraphState.selectedIndex];
+    const selX = leftGutter + (sel.offsetSeconds / totalDuration) * plotW;
+    const selY = h - Math.min(1, sel.speedKmh / scaleMax) * h;
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.stroke();
+  }
+
+  function selectAtClientX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const plotW = Math.max(1, rect.width - leftGutter);
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left - leftGutter) / plotW));
+    editGraphState.selectedIndex = Math.min(points.length - 1, Math.max(0, Math.round(fraction * (points.length - 1))));
+    updateEditControlsEnabled();
+    draw();
+  }
+
+  let dragging = false;
+  canvas.onpointerdown = (e) => { dragging = true; canvas.setPointerCapture(e.pointerId); selectAtClientX(e.clientX); };
+  canvas.onpointermove = (e) => { if (dragging || e.pointerType === "mouse") selectAtClientX(e.clientX); };
+  canvas.onpointerup = () => { dragging = false; };
+  canvas.onpointercancel = () => { dragging = false; };
+
+  editGraphRedraw = () => { resizeCanvas(); draw(); };
+  resizeCanvas();
+  draw();
+}
+
+function renderEditLabelChips() {
+  const container = document.getElementById("edit-label-chips");
+  const custom = editPendingLabels.filter((l) => !LABEL_PRESETS.includes(l));
+  container.innerHTML = "";
+
+  LABEL_PRESETS.forEach((preset) => {
+    const active = editPendingLabels.includes(preset);
+    const chip = document.createElement("button");
+    chip.className = "chip" + (active ? " selected" : "");
+    chip.textContent = preset;
+    chip.addEventListener("click", () => {
+      editPendingLabels = active ? editPendingLabels.filter((l) => l !== preset) : editPendingLabels.concat(preset);
+      renderEditLabelChips();
+    });
+    container.appendChild(chip);
+  });
+  custom.forEach((label) => {
+    const chip = document.createElement("button");
+    chip.className = "chip selected";
+    chip.textContent = `${labelIcon(label)} ${label}`;
+    chip.addEventListener("click", () => {
+      editPendingLabels = editPendingLabels.filter((l) => l !== label);
+      renderEditLabelChips();
+    });
+    container.appendChild(chip);
+  });
+  const addChip = document.createElement("button");
+  addChip.className = "chip";
+  addChip.textContent = "+ eigenes Label";
+  addChip.addEventListener("click", () => {
+    const text = (prompt("Eigenes Label:") || "").trim();
+    if (text) {
+      editPendingLabels = editPendingLabels.concat(text);
+      renderEditLabelChips();
+    }
+  });
+  container.appendChild(addChip);
+}
+
+function renderEditMarkInfo() {
+  const el = document.getElementById("edit-mark-info");
+  if (editMarkA == null && editMarkB == null) {
+    el.classList.add("hidden");
+    document.getElementById("edit-reset-selection-btn").classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  document.getElementById("edit-reset-selection-btn").classList.remove("hidden");
+  const parts = [];
+  if (editMarkA != null) parts.push(`A = ${new Date(editMarkA).toLocaleTimeString("de-DE")}`);
+  if (editMarkB != null) parts.push(`B = ${new Date(editMarkB).toLocaleTimeString("de-DE")}`);
+  el.innerHTML = `<span>${parts.join("   ")}</span>`;
+}
+
+function renderEditPendingActions() {
+  const container = document.getElementById("edit-pending-list");
+  const applyBtn = document.getElementById("edit-apply-btn");
+  if (editPendingActions.length === 0) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    applyBtn.classList.add("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+  applyBtn.classList.remove("hidden");
+  container.innerHTML = editPendingActions
+    .map(
+      (action, i) =>
+        `<div class="edit-pending-row"><span>${escapeHtml(action.description)}</span><button data-index="${i}">✕</button></div>`
+    )
+    .join("");
+  container.querySelectorAll("button[data-index]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      editPendingActions.splice(Number(btn.dataset.index), 1);
+      renderEditPendingActions();
+      if (editGraphState) renderEditGraph(editTrip);
+    });
+  });
+}
+
+function renderEditSegmentList() {
+  const container = document.getElementById("edit-segment-list");
+  if (editPendingMarks.length === 0) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+  container.classList.remove("hidden");
+  container.innerHTML =
+    '<div class="segment-list-header">Markierte Abschnitte</div>' +
+    editPendingMarks
+      .map((mark, i) => {
+        const stats = computeSegmentStats(editTrip, mark);
+        const startTime = new Date(mark.startTs).toLocaleTimeString("de-DE");
+        const endTime = new Date(mark.endTs).toLocaleTimeString("de-DE");
+        return `
+          <div class="segment-row">
+            <span class="segment-color-dot" style="background:${labelColor(mark.label)}"></span>
+            <div class="segment-row-text">
+              <div class="title">${labelIcon(mark.label)} ${escapeHtml(mark.label)}: ${startTime}–${endTime}</div>
+              <div class="stats">${stats.distanceKm.toFixed(1)} km · ${formatTripDuration(stats.durationMinutes)} · Ø ${Math.round(stats.avgSpeedKmh)} km/h · Max ${Math.round(stats.maxSpeedKmh)} km/h</div>
+            </div>
+            <button class="segment-delete-btn" data-index="${i}">✕</button>
+          </div>
+        `;
+      })
+      .join("");
+  container.querySelectorAll("button[data-index]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      editPendingMarks.splice(Number(btn.dataset.index), 1);
+      renderEditSegmentList();
+      redrawEditMapMarks();
+      if (editGraphState) renderEditGraph(editTrip);
+    });
+  });
+}
+
+function updateEditControlsEnabled() {
+  const hasScrub = Boolean(editGraphState);
+  document.getElementById("edit-set-a-btn").disabled = !hasScrub;
+  document.getElementById("edit-set-b-btn").disabled = !hasScrub;
+  document.getElementById("edit-trim-start-btn").disabled = editMarkA == null;
+  document.getElementById("edit-trim-end-btn").disabled = editMarkB == null;
+  document.getElementById("edit-cut-pause-btn").disabled = editMarkA == null || editMarkB == null;
+  document.getElementById("edit-mark-segment-btn").disabled = editMarkA == null || editMarkB == null;
+}
+
+document.getElementById("trip-detail-edit").addEventListener("click", () => {
+  if (currentDetailTrip) openTripEdit(currentDetailTrip);
+});
+
+document.getElementById("edit-set-a-btn").addEventListener("click", () => {
+  if (!editGraphState) return;
+  editMarkA = editGraphState.points[editGraphState.selectedIndex].timestamp;
+  renderEditMarkInfo();
+  updateEditControlsEnabled();
+  updateEditAbMapMarkers();
+  renderEditGraph(editTrip);
+});
+document.getElementById("edit-set-b-btn").addEventListener("click", () => {
+  if (!editGraphState) return;
+  editMarkB = editGraphState.points[editGraphState.selectedIndex].timestamp;
+  renderEditMarkInfo();
+  updateEditControlsEnabled();
+  updateEditAbMapMarkers();
+  renderEditGraph(editTrip);
+});
+document.getElementById("edit-reset-selection-btn").addEventListener("click", () => {
+  editMarkA = null;
+  editMarkB = null;
+  renderEditMarkInfo();
+  updateEditControlsEnabled();
+  updateEditAbMapMarkers();
+  renderEditGraph(editTrip);
+});
+
+document.getElementById("edit-trim-start-btn").addEventListener("click", () => {
+  if (editMarkA == null) return;
+  editPendingActions = editPendingActions.filter((a) => a.type !== "trimStart");
+  editPendingActions.push({
+    type: "trimStart",
+    ts: editMarkA,
+    description: `Anfang bis ${new Date(editMarkA).toLocaleTimeString("de-DE")} abschneiden`,
+  });
+  renderEditPendingActions();
+});
+document.getElementById("edit-trim-end-btn").addEventListener("click", () => {
+  if (editMarkB == null) return;
+  editPendingActions = editPendingActions.filter((a) => a.type !== "trimEnd");
+  editPendingActions.push({
+    type: "trimEnd",
+    ts: editMarkB,
+    description: `B bis Ende abschneiden (ab ${new Date(editMarkB).toLocaleTimeString("de-DE")})`,
+  });
+  renderEditPendingActions();
+});
+document.getElementById("edit-cut-pause-btn").addEventListener("click", () => {
+  if (editMarkA == null || editMarkB == null) return;
+  const start = Math.min(editMarkA, editMarkB);
+  const end = Math.max(editMarkA, editMarkB);
+  const minutes = Math.max(1, Math.round((end - start) / 60000));
+  editPendingActions.push({
+    type: "cut",
+    start,
+    end,
+    description: `Pause entfernt: ${new Date(start).toLocaleTimeString("de-DE")}–${new Date(end).toLocaleTimeString("de-DE")} (${minutes} min)`,
+  });
+  renderEditPendingActions();
+  renderEditGraph(editTrip);
+});
+
+document.getElementById("edit-mark-segment-btn").addEventListener("click", () => {
+  if (editMarkA == null || editMarkB == null) return;
+  const start = Math.min(editMarkA, editMarkB);
+  const end = Math.max(editMarkA, editMarkB);
+  const text = prompt(
+    `Label für diesen Abschnitt (${new Date(start).toLocaleTimeString("de-DE")}–${new Date(end).toLocaleTimeString("de-DE")}), ` +
+      `z.B. "${LABEL_PRESETS.join('", "')}":`,
+    LABEL_PRESETS[0]
+  );
+  const label = (text || "").trim();
+  if (!label) return;
+  editPendingMarks = editPendingMarks.concat({ label, startTs: start, endTs: end });
+  renderEditSegmentList();
+  redrawEditMapMarks();
+  renderEditGraph(editTrip);
+});
+
+function currentEditLabelsString() {
+  return editPendingLabels
+    .map((l) => l.replace(/,/g, "").trim())
+    .filter(Boolean)
+    .join(",");
+}
+
+async function saveAndCloseEditScreen(updatedTrip) {
+  const applyBtn = document.getElementById("edit-apply-btn");
+  applyBtn.disabled = true;
+  try {
+    await pushBackupConflictSafe();
+    editTrip = null;
+    showScreen("detail");
+    openTripDetail(updatedTrip);
+  } catch (e) {
+    alert("Speichern fehlgeschlagen: " + (e.message || e));
+  } finally {
+    applyBtn.disabled = false;
+  }
+}
+
+document.getElementById("edit-apply-btn").addEventListener("click", () => {
+  if (!confirm("Diese Änderung kann nicht rückgängig gemacht werden. Fortfahren?")) return;
+  const plan = {
+    trimStartTs: editPendingActions.find((a) => a.type === "trimStart")?.ts ?? null,
+    trimEndTs: editPendingActions.find((a) => a.type === "trimEnd")?.ts ?? null,
+    pauseCuts: editPendingActions.filter((a) => a.type === "cut").map((a) => [a.start, a.end]),
+  };
+  const tripWithPendingMetadata = {
+    ...editTrip,
+    labels: currentEditLabelsString(),
+    segmentMarksJson: segmentMarksToJson(editPendingMarks),
+  };
+  const updatedTrip = applyTripEditPlanJs(tripWithPendingMetadata, plan);
+  if (!updatedTrip) {
+    alert("Änderung ungültig (zu wenige Punkte übrig)");
+    return;
+  }
+  replaceTripInBackupData(editTrip, updatedTrip);
+  saveAndCloseEditScreen(updatedTrip);
+});
+
+function attemptEditBack() {
+  const hasUnsavedMetadata = pendingLabelsChanged() || pendingMarksChanged();
+  const hasUnappliedCuts = editPendingActions.length > 0;
+
+  if (!hasUnsavedMetadata && !hasUnappliedCuts) {
+    editTrip = null;
+    showScreen("detail");
+    return;
+  }
+
+  if (hasUnsavedMetadata) {
+    const wantsSave = confirm(
+      "Ungespeicherte Änderungen an Labels/Markierungen." +
+        (hasUnappliedCuts ? " Geplante Zuschnitte werden dabei NICHT angewendet und gehen verloren." : "") +
+        "\n\nOK = Speichern, Abbrechen = Verwerfen und verlassen."
+    );
+    if (wantsSave) {
+      const newMax = recomputeMaxSpeedExcludingMarks(editTrip, editPendingMarks);
+      const updatedTrip = {
+        ...editTrip,
+        labels: currentEditLabelsString(),
+        segmentMarksJson: segmentMarksToJson(editPendingMarks),
+        maxSpeedKmh: newMax,
+      };
+      replaceTripInBackupData(editTrip, updatedTrip);
+      saveAndCloseEditScreen(updatedTrip);
+      return;
+    }
+  } else if (hasUnappliedCuts) {
+    if (!confirm("Geplante Zuschnitte wurden noch nicht angewendet und gehen beim Verlassen verloren. Trotzdem verlassen?")) {
+      return;
+    }
+  }
+  const trip = editTrip;
+  editTrip = null;
+  showScreen("detail");
+  openTripDetail(trip);
+}
+
+document.getElementById("trip-edit-back").addEventListener("click", attemptEditBack);
+
+// Selber globaler Resize-Handler-Ansatz wie bei der Detailseite, nur für den Bearbeiten-Graphen.
+window.addEventListener("resize", () => { if (editGraphRedraw) editGraphRedraw(); });
+
 // --- Geschwindigkeits-Graph ein-/ausblenden ---
 // Präferenz bleibt über localStorage erhalten, gilt für alle Fahrten (nicht pro Fahrt gespeichert).
 const GRAPH_COLLAPSED_KEY = "drivetrack_graph_collapsed";
@@ -973,6 +1976,7 @@ const AUTO_REFRESH_INTERVAL_MS = 60_000;
 
 function canAutoRefreshNow() {
   return Boolean(session && dek) && (screens.detail.classList.contains("hidden")) &&
+    (screens.edit.classList.contains("hidden")) &&
     (screens.settings.classList.contains("hidden"));
 }
 
