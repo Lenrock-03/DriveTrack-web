@@ -186,14 +186,24 @@ demselben Muster wie die bestehende `carIdMap`).
   (inkl. `pausedMinutes`-Abzug für die Fahrzeit über `tripDrivingMinutes()`) - `renderStats()`
   weiter oben ist davon unberührt, rechnet weiterhin ohne `pausedMinutes`-Abzug (noch nicht
   umgestellter, älterer Code, kein Bug dieser Funktion).
-- `#trip-group-screen` (`openTripGroup()`): Statistik-Kacheln, Mitgliedsfahrten-Liste ("✕"-Button
-  entfernt nur aus der Gruppe, löscht die Fahrt nie - setzt nur `groupId = null` via
-  `replaceTripInBackupData()`), "Fahrten hinzufügen" (öffnet `#trip-group-picker-screen` im
-  Hinzufügen-Modus), "Gruppe löschen" (setzt `groupId` aller Mitglieder zurück, bevor die Gruppe
-  selbst aus `backupData.groups` entfernt wird). Umbenennen über einen eigenen Stift-Button +
-  `prompt()` (kein eigenes Modal-System in dieser App, siehe "Fahrten bearbeiten" oben) - bewusst
-  NICHT inline im Screen, wie es die App zunächst hatte, bevor sie ebenfalls auf einen Dialog
-  umgestellt wurde.
+- `#trip-group-screen` (`renderTripGroupScreen()`): Statistik-Kacheln, eine nicht-interaktive
+  Kartenvorschau (`renderGroupThumbnailPreview()` - echte Leaflet-Karte mit Kartenkacheln + Route,
+  aber `dragging`/`scrollWheelZoom`/etc. alle deaktiviert und zusätzlich `pointer-events: none` per
+  CSS, damit sie nicht mit dem Scrollen der Seite kollidiert; seit v1.10.0 KEIN reiner Canvas-Pfad
+  mehr, spiegelt jetzt `GroupRouteMap(interactive=false)` der App statt nur `drawRouteThumbnail()`
+  zu erweitern), ein Vergrößerungs-Icon darauf öffnet `#trip-group-route-screen` (siehe unten),
+  Mitgliedsfahrten-Liste ("✕"-Button entfernt nur aus der Gruppe, löscht die Fahrt nie - setzt nur
+  `groupId = null` via `replaceTripInBackupData()`), "Fahrten hinzufügen" (öffnet
+  `#trip-group-picker-screen` im Hinzufügen-Modus), "Gruppe löschen" (setzt `groupId` aller
+  Mitglieder zurück, bevor die Gruppe selbst aus `backupData.groups` entfernt wird). Umbenennen über
+  einen eigenen Stift-Button + `prompt()` (kein eigenes Modal-System in dieser App, siehe "Fahrten
+  bearbeiten" oben) - bewusst NICHT inline im Screen, wie es die App zunächst hatte, bevor sie
+  ebenfalls auf einen Dialog umgestellt wurde.
+- `#trip-group-route-screen` (`renderTripGroupRouteScreen()`) - eigener Screen NUR für die
+  interaktive Vollbild-Karte + den Graphen, erreichbar über das Vergrößerungs-Icon oben (ursprünglich
+  in v1.9.0 Teil von `#trip-group-screen` selbst, in v1.9.1 ausgelagert: zusammen mit der
+  Mitgliedsfahrten-Liste sprengte das sonst die Höhe eines Viewports - spiegelt jetzt
+  `TripGroupRouteScreen.kt` der App, die dasselbe schon immer als eigenen Screen hatte).
   - Eigene Leaflet-Karte (`groupMap`, `#trip-group-map`) mit den Routen ALLER Mitgliedsfahrten
     (`renderGroupRouteLine()`) inkl. Standard-/Geschwindigkeitsfarb-Umschalter (`#group-route-color-
     mode`, teilt sich den `ROUTE_COLOR_MODE_KEY`-localStorage-Eintrag mit der Einzelfahrt-Ansicht)
@@ -209,11 +219,43 @@ demselben Muster wie die bestehende `carIdMap`).
       Fahrten hinweg (jede Fahrt läuft als eigene, isolierte Punktreihe durch `buildSpeedSeries()`) -
       sonst würde die Luftlinien-"Geschwindigkeit" zwischen dem Ziel einer Fahrt und dem Start der
       nächsten (oft über Tage hinweg) als astronomischer Ausreißer erscheinen.
-- `#trip-group-picker-screen` (`openGroupPicker()`): `targetGroupId == null` → Erstellen-Modus
-  (Namensfeld + Checkliste aller Fahrten), sonst Hinzufügen-Modus (kein Namensfeld, Checkliste aller
-  Fahrten, die noch NICHT in dieser Gruppe sind). Da eine Fahrt nur in EINER Gruppe sein kann
+    - **min-height:0-Falle** (v1.9.2): `<canvas>` ist ein "replaced element" mit intrinsischem
+      Seitenverhältnis (Standard 300x150 ohne eigene `width`/`height`-Attribute) - als Flex-Kind
+      OHNE `min-height: 0` bekommt es eine automatische Mindesthöhe aus Breite/Seitenverhältnis,
+      unter die `flex-shrink` nicht schrumpfen darf. Betraf `#speed-graph-canvas` genauso wie
+      `#group-graph-canvas` (beide über dieselbe CSS-Regel behoben).
+- `#trip-group-picker-screen` (`renderGroupPickerScreen()`): `targetGroupId == null` → Erstellen-
+  Modus (Namensfeld + Checkliste aller Fahrten), sonst Hinzufügen-Modus (kein Namensfeld, Checkliste
+  aller Fahrten, die noch NICHT in dieser Gruppe sind). Da eine Fahrt nur in EINER Gruppe sein kann
   (spiegelt `carId`), zeigen Fahrten aus einer ANDEREN Gruppe ein `.picker-check-badge` - Auswahl
   verschiebt sie dorthin, statt es stillschweigend passieren zu lassen.
+
+## Echte Zurück-Navigation (seit v1.10.0)
+
+Diese App ist eine Single-Page-App ohne eigenes URL-Routing - ohne Weiteres wäre die Zurück-Taste
+des Browsers (bzw. Wischen-zurück auf Mobilgeräten) beim Öffnen eines Screens wirkungslos oder würde
+die Seite ganz verlassen. Pendant zu `BackHandler` in der Android-App (`MainActivity.kt`).
+
+`overlayStack` (Array von Render-Funktionen, kein HTML/keine eingefrorenen Objekt-Referenzen) bildet
+die aktuell offenen Screens als Stack ab. `pushOverlay(renderFn)` registriert einen
+`history.pushState({depth}, "")`-Eintrag UND die Render-Funktion für diese Ebene; der generische
+`popstate`-Handler kürzt den Stack anhand von `event.state.depth` und ruft den jetzt obersten
+Eintrag erneut auf (oder zeigt "main", wenn der Stack leer ist) - jede Render-Funktion liest ihre
+Daten dabei selbst frisch (z.B. Gruppen-Mitgliedschaft direkt aus `backupData.trips`), keine
+veralteten Objekt-Referenzen. Aktualisierungen OHNE Navigation (z.B. nach Umbenennen einer Gruppe,
+man bleibt auf derselben Ebene) laufen stattdessen über `refreshTopOverlay()` - ersetzt nur die
+oberste Stack-Position, ohne einen neuen History-Eintrag zu erzeugen. Alle "Zurück"-Buttons rufen
+seitdem einheitlich `history.back()` auf (nicht mehr direkt `showScreen(...)`), damit Button-Klick
+und echte Browser-Zurück-Taste garantiert denselben Weg nehmen.
+
+**Sonderfall Bearbeiten-Screen**: `attemptEditBack()` kann die Navigation bei ungespeicherten
+Änderungen abbrechen (Rückfrage-Dialog). Da diese Funktion nur über `popstate` erreicht wird, hat
+der Browser die Zurück-Taste zu diesem Zeitpunkt aber schon "ausgeführt" (History-Position bereits
+verschoben) - bricht der Nutzer ab, wird der History-Eintrag künstlich per `history.pushState()`
+wiederhergestellt, sonst bräuchte ein zweiter Zurück-Versuch nur noch einen Klick.
+`editBackAlreadyDecided` verhindert, dass der generische `popstate`-Handler `attemptEditBack()`
+ERNEUT aufruft, wenn der Bearbeiten-Screen selbst (z.B. nach erfolgreichem "Änderungen anwenden")
+programmatisch `history.back()` auslöst - die Entscheidung "verlassen" ist dort bereits gefallen.
 
 ## Versionierung
 

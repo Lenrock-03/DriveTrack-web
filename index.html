@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.9.2" />
+<meta name="app-version" content="1.10.0" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -206,11 +206,12 @@
       <div class="detail-stats" id="trip-group-stats"></div>
     </div>
     <div class="edit-content">
-      <!-- Statische Vorschau (kein Leaflet) - Vergrößerungs-Icon öffnet die interaktive
-           Vollbild-Karte samt Graph in #trip-group-route-screen, spiegelt GroupRouteMap
-           (interactive=false) + Vergrößerungs-Icon in TripGroupDetailScreen.kt der App. -->
+      <!-- Nicht-interaktive Vorschau-Karte (echte Kartenkacheln + Route, aber ohne Pan/Zoom) -
+           Vergrößerungs-Icon öffnet die interaktive Vollbild-Karte samt Graph in
+           #trip-group-route-screen, spiegelt GroupRouteMap(interactive=false) +
+           Vergrößerungs-Icon in TripGroupDetailScreen.kt der App. -->
       <div class="group-map-preview" id="trip-group-map-preview">
-        <canvas id="trip-group-thumb-canvas"></canvas>
+        <div id="trip-group-thumb-map"></div>
         <button id="trip-group-expand-btn" class="group-map-expand-btn" title="Große Karte mit Graph öffnen">⛶</button>
       </div>
 

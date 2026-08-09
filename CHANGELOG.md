@@ -8,6 +8,22 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.10.0] - 2026-08-09
+
+### Hinzugefügt
+- **Echte Zurück-Navigation**: die Zurück-Taste des Browsers (bzw. Wischen-zurück auf
+  Mobilgeräten) schließt jetzt den gerade offenen Screen, statt wirkungslos zu sein oder die Seite
+  zu verlassen - Pendant zu `BackHandler` in der Android-App. Verschachtelte Screens (z.B. Gruppen-
+  Route über der Gruppen-Detailseite, Bearbeiten über der Fahrt-Detailseite) gehen dabei Schritt für
+  Schritt zurück, nicht auf einmal zur Startseite. Die "Zurück"-Buttons lösen jetzt einheitlich
+  dieselbe Navigation aus (`history.back()`), damit Button-Klick und Browser-Zurück-Taste nie
+  auseinanderlaufen - inklusive der Rückfrage beim Verlassen des Bearbeiten-Screens mit
+  ungespeicherten Änderungen, die jetzt auch über die Browser-Zurück-Taste ausgelöst wird (nicht nur
+  über den Button).
+- **Gruppen-Vorschau zeigt jetzt eine echte Karte** (Kartenkacheln + Route) statt nur der Route auf
+  einfarbigem Hintergrund - eine nicht-interaktive Leaflet-Karte statt eines reinen Canvas-Pfads,
+  spiegelt jetzt GroupRouteMap(interactive=false) der App.
+
 ## [1.9.2] - 2026-08-09
 
 ### Behoben

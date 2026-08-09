@@ -477,10 +477,15 @@ input:focus {
   overflow: hidden;
   background: var(--surface);
 }
-#trip-group-thumb-canvas {
+#trip-group-thumb-map {
   width: 100%;
   height: 100%;
-  display: block;
+  background: var(--surface);
+  filter: contrast(1.15) brightness(1.65) saturate(1.15);
+  /* Rein informative Vorschau, keine eigene Interaktion (siehe renderGroupThumbnailPreview -
+     dragging/zoom/etc. sind an der Leaflet-Instanz selbst deaktiviert) - trotzdem defensiv auch
+     hier, damit z.B. kein Touch-Scroll-Konflikt beim versehentlichen Antippen entsteht. */
+  pointer-events: none;
 }
 .group-map-expand-btn {
   position: absolute;

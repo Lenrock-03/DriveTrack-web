@@ -24,6 +24,7 @@ let currentGroupTrips = null; // Mitgliedsfahrten der gerade offenen Gruppe, fü
 let currentGroup = null; // Gruppe der gerade offenen Gruppen-Detailseite
 let groupRouteLineLayers = [];
 let groupPickerTargetId = null; // null = Erstellen-Modus, sonst Hinzufügen-Modus zu dieser Gruppe
+let groupThumbMap = null; // nicht-interaktive Vorschau-Karte in der Gruppen-Detailseite
 
 // --- Session-Verwaltung (localStorage: nur Token/Salt/verpackter DEK, nie Passwort/DEK selbst) ---
 function loadSession() {
@@ -62,6 +63,65 @@ function showScreen(name) {
   Object.values(screens).forEach((el) => el.classList.add("hidden"));
   screens[name].classList.remove("hidden");
 }
+
+// --- Browser-Zurück-Taste schließt den aktuell offenen Screen ---
+// Diese App ist eine Single-Page-App ohne eigenes URL-Routing - ohne das wäre die Zurück-Taste des
+// Browsers (bzw. Wischen-zurück auf Mobilgeräten) beim Öffnen eines Screens wirkungslos oder würde
+// die Seite ganz verlassen. Pendant zu BackHandler in der Android-App (MainActivity.kt).
+//
+// overlayStack merkt sich pro Verschachtelungs-Tiefe eine RENDER-Funktion (kein fertiges HTML/
+// keine eingefrorene Objekt-Referenz auf Trip/Gruppe) - beim Zurückgehen wird der jeweils oberste
+// verbleibende Eintrag einfach erneut aufgerufen, der seine Daten dabei selbst aktuell hält (z.B.
+// nach einer Bearbeitung). pushOverlay() öffnet eine neue Ebene (echte Vorwärtsnavigation, z.B.
+// Antippen einer Fahrt); Aktualisierungen OHNE Navigation (z.B. nach Umbenennen einer Gruppe, man
+// bleibt auf derselben Ebene) ersetzen stattdessen nur den obersten Eintrag, siehe
+// refreshTopOverlay().
+let overlayStack = [];
+
+function pushOverlay(renderFn) {
+  history.pushState({ depth: overlayStack.length + 1 }, "");
+  overlayStack.push(renderFn);
+  renderFn();
+}
+
+/** Ersetzt die Render-Funktion der aktuell obersten Ebene, OHNE einen neuen History-Eintrag zu
+ * erzeugen - für Aktualisierungen, die auf derselben Ebene bleiben (z.B. Gruppe umbenennen). */
+function refreshTopOverlay(renderFn) {
+  if (overlayStack.length > 0) overlayStack[overlayStack.length - 1] = renderFn;
+  renderFn();
+}
+
+function closeAllOverlaysToMain() {
+  overlayStack = [];
+  showScreen("main");
+  currentDetailTrip = null;
+  currentGroup = null;
+  currentGroupTrips = null;
+  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+}
+
+// Der Bearbeiten-Screen kann eine Zurück-Navigation bei ungespeicherten Änderungen abbrechen (siehe
+// attemptEditBack()) - dafür braucht popstate dort eine Sonderbehandlung statt des generischen
+// Pfads unten. editBackAlreadyDecided überspringt diese Sonderbehandlung für den Fall, dass der
+// Bearbeiten-Screen SELBST (z.B. nach erfolgreichem Speichern) programmatisch history.back()
+// auslöst - dort wurde die Entscheidung ("verlassen") bereits getroffen, keine erneute Rückfrage nötig.
+let editBackAlreadyDecided = false;
+
+window.addEventListener("popstate", (e) => {
+  if (!screens.edit.classList.contains("hidden") && !editBackAlreadyDecided) {
+    attemptEditBack();
+    return;
+  }
+  editBackAlreadyDecided = false;
+
+  const depth = (e.state && e.state.depth) || 0;
+  overlayStack.length = Math.min(overlayStack.length, depth);
+  if (overlayStack.length === 0) {
+    closeAllOverlaysToMain();
+  } else {
+    overlayStack[overlayStack.length - 1]();
+  }
+});
 
 // --- Boot ---
 async function boot() {
@@ -243,6 +303,7 @@ document.getElementById("unlock-btn").addEventListener("click", async () => {
 
 document.getElementById("unlock-logout-btn").addEventListener("click", () => {
   clearSession();
+  overlayStack = [];
   showScreen("login");
 });
 // Leichte Zwei-Klick-Bestätigung statt sofortigem Abmelden: erster Klick ändert den Button-Text
@@ -255,6 +316,7 @@ logoutBtn.addEventListener("click", () => {
     logoutBtn.dataset.confirming = "0";
     logoutBtn.textContent = "Abmelden";
     clearSession();
+    overlayStack = [];
     showScreen("login");
   } else {
     logoutBtn.dataset.confirming = "1";
@@ -448,12 +510,13 @@ document.getElementById("refresh-btn").addEventListener("click", async () => {
 // index.html (kein Build-Step hier, der eine Konstante an mehreren Stellen einsetzen könnte).
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "?";
 document.getElementById("settings-version-label").textContent = `Version ${APP_VERSION}`;
-document.getElementById("settings-btn").addEventListener("click", () => {
+function renderSettingsScreen() {
   document.getElementById("settings-username-value").textContent = session?.username || "–";
   document.getElementById("settings-email-value").textContent = session?.email || "–";
   showScreen("settings");
-});
-document.getElementById("settings-back").addEventListener("click", () => showScreen("main"));
+}
+document.getElementById("settings-btn").addEventListener("click", () => pushOverlay(renderSettingsScreen));
+document.getElementById("settings-back").addEventListener("click", () => history.back());
 
 // --- Versionsverlauf (seit v1.7.0) ---
 // "Backup-Sicherung ohne Bearbeitungen, die bei Konflikten greift": jede zuvor gesicherte Version
@@ -1184,7 +1247,14 @@ function setupRouteHover(line, trip) {
   });
 }
 
+/** Öffnet die Fahrt-Detailseite als neue Navigations-Ebene (Zurück-Taste/-Button führt zur
+ * vorherigen Ebene zurück) - für Aktualisierungen OHNE Navigation (z.B. nach einer Bearbeitung,
+ * man landet wieder auf derselben Ebene) direkt renderTripDetailScreen() aufrufen. */
 function openTripDetail(trip) {
+  pushOverlay(() => renderTripDetailScreen(trip));
+}
+
+function renderTripDetailScreen(trip) {
   const dateStr = new Date(trip.startTimestamp).toLocaleDateString("de-DE", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
@@ -1402,11 +1472,7 @@ function renderSpeedGraph(trip) {
 // Ein einziger globaler Resize-Handler statt pro Fahrt-Öffnung einen neuen anzuhängen (kein Leak)
 window.addEventListener("resize", () => { if (currentGraphRedraw) currentGraphRedraw(); });
 
-document.getElementById("trip-detail-back").addEventListener("click", () => {
-  showScreen("main");
-  currentDetailTrip = null;
-  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
-});
+document.getElementById("trip-detail-back").addEventListener("click", () => history.back());
 
 // --- Fahrten gruppieren: Detailseite + Vollbild-Karte (seit v1.9.0) ---
 // 1:1-Port von TripGroupDetailScreen.kt/TripGroupRouteScreen.kt/GroupRouteMap.kt der App.
@@ -1693,7 +1759,8 @@ function renderGroupMembers(trips) {
       } catch (err) {
         alert("Speichern fehlgeschlagen: " + (err.message || err));
       }
-      openTripGroup(currentGroup);
+      // Bleibt auf derselben Ebene (keine Navigation) - nur die oberste Overlay-Ebene aktualisieren.
+      refreshTopOverlay(() => renderTripGroupScreen(currentGroup));
     });
 
     row.appendChild(text);
@@ -1718,21 +1785,59 @@ document.getElementById("group-route-color-mode").addEventListener("change", (e)
 });
 
 /**
- * Statische Vorschau-Kachel (kein Leaflet) in der Gruppen-Detailseite - spiegelt
- * GroupRouteMap(interactive=false) der App: reines Canvas-Thumbnail, kein Pan/Zoom, damit es nicht
- * mit dem Scrollen der Seite kollidiert. Größerer Rand (16px statt der 6px bei den kleinen
- * 56x56-Listen-Thumbnails) für die deutlich größere Kachel hier.
+ * Vorschau-Kachel in der Gruppen-Detailseite - echte (aber nicht-interaktive) Leaflet-Karte mit
+ * Kartenkacheln + Route, spiegelt GroupRouteMap(interactive=false) der App (dort ebenfalls eine
+ * "echte" Karte statt nur eines Pfads, nur ohne Pan/Zoom). Jede Interaktion ist an der Instanz
+ * selbst deaktiviert, damit sie nicht mit dem Scrollen der Seite kollidiert - das Vergrößerungs-
+ * Icon (separates Element obendrüber) öffnet stattdessen die volle interaktive Karte samt Graph.
+ * Wird bei jedem Öffnen neu aufgebaut statt aktualisiert - einfacher als Update-Logik für eine
+ * reine Vorschau, die ohnehin bei jedem Öffnen der Seite neu passend zugeschnitten werden muss.
  */
 function renderGroupThumbnailPreview(trips) {
-  const canvas = document.getElementById("trip-group-thumb-canvas");
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
-  drawGroupRouteThumbnail(canvas, trips.map(parseTripPoints), 16 * dpr);
+  if (groupThumbMap) {
+    groupThumbMap.remove();
+    groupThumbMap = null;
+  }
+
+  // Karte erst nach dem Sichtbarwerden initialisieren (Leaflet braucht sichtbare Größe, siehe
+  // openTripDetail()/CLAUDE.md-Stolperstein).
+  setTimeout(() => {
+    groupThumbMap = L.map("trip-group-thumb-map", {
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      touchZoom: false,
+      tap: false,
+    }).setView([47.8, 11.7], 12);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      subdomains: "abcd",
+      maxZoom: 20,
+    }).addTo(groupThumbMap);
+
+    const allPoints = [];
+    trips.forEach((trip) => {
+      const points = parseTripPoints(trip);
+      if (points.length < 2) return;
+      L.polyline(points, { color: "#ff7a1a", weight: 3, opacity: 0.9 }).addTo(groupThumbMap);
+      points.forEach((p) => allPoints.push(p));
+    });
+    if (allPoints.length > 0) groupThumbMap.fitBounds(allPoints, { padding: [16, 16] });
+    groupThumbMap.invalidateSize();
+  }, 50);
 }
 
+/** Öffnet die Gruppen-Detailseite als neue Navigations-Ebene. Für Aktualisierungen OHNE Navigation
+ * (bleibt auf derselben Ebene, z.B. nach Umbenennen/Entfernen einer Mitgliedsfahrt) stattdessen
+ * refreshTopOverlay(() => renderTripGroupScreen(group)) verwenden. */
 function openTripGroup(group) {
+  pushOverlay(() => renderTripGroupScreen(group));
+}
+
+function renderTripGroupScreen(group) {
   currentGroup = group;
   const trips = backupData.trips.filter((t) => t.groupId === group.id);
   currentGroupTrips = trips;
@@ -1759,13 +1864,14 @@ document.getElementById("trip-group-expand-btn").addEventListener("click", () =>
   if (currentGroup && currentGroupTrips) openTripGroupRoute(currentGroup, currentGroupTrips);
 });
 
-/**
- * Vollbild-Karte + kombinierter Geschwindigkeits-Graph über alle Mitgliedsfahrten, erreichbar über
- * das Vergrößerungs-Icon auf der statischen Vorschau in #trip-group-screen - spiegelt
- * TripGroupRouteScreen.kt der App (dort ebenfalls ein eigener Screen, nicht Teil der normalen
- * Gruppenansicht).
- */
+/** Öffnet die Vollbild-Karte + kombinierten Graph als neue Navigations-Ebene über der
+ * Gruppen-Detailseite - spiegelt TripGroupRouteScreen.kt der App (dort ebenfalls ein eigener
+ * Screen, nicht Teil der normalen Gruppenansicht). */
 function openTripGroupRoute(group, trips) {
+  pushOverlay(() => renderTripGroupRouteScreen(group, trips));
+}
+
+function renderTripGroupRouteScreen(group, trips) {
   document.getElementById("trip-group-route-title").textContent = group.name;
   showScreen("groupRoute");
   applyGroupRouteColorModeSelection();
@@ -1798,16 +1904,8 @@ function openTripGroupRoute(group, trips) {
   }, 50);
 }
 
-document.getElementById("trip-group-route-back").addEventListener("click", () => {
-  showScreen("group");
-});
-
-document.getElementById("trip-group-back").addEventListener("click", () => {
-  showScreen("main");
-  currentGroup = null;
-  currentGroupTrips = null;
-  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
-});
+document.getElementById("trip-group-route-back").addEventListener("click", () => history.back());
+document.getElementById("trip-group-back").addEventListener("click", () => history.back());
 
 document.getElementById("trip-group-rename-btn").addEventListener("click", async () => {
   if (!currentGroup) return;
@@ -1823,7 +1921,7 @@ document.getElementById("trip-group-rename-btn").addEventListener("click", async
   } catch (e) {
     alert("Speichern fehlgeschlagen: " + (e.message || e));
   }
-  openTripGroup(backupData.groups[idx]);
+  refreshTopOverlay(() => renderTripGroupScreen(backupData.groups[idx]));
 });
 
 document.getElementById("group-delete-btn").addEventListener("click", async () => {
@@ -1844,9 +1942,8 @@ document.getElementById("group-delete-btn").addEventListener("click", async () =
   } catch (e) {
     alert("Löschen fehlgeschlagen: " + (e.message || e));
   }
-  currentGroup = null;
-  showScreen("main");
-  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+  // Gruppe ist weg - eine Ebene zurück (immer direkt unter "main" erreicht, siehe openTripGroup()).
+  history.back();
 });
 
 document.getElementById("group-add-trips-btn").addEventListener("click", () => {
@@ -1860,6 +1957,10 @@ document.getElementById("group-add-trips-btn").addEventListener("click", () => {
 // noch NICHT in dieser Gruppe sind). Fahrten aus einer ANDEREN Gruppe zeigen ein Badge - eine Fahrt
 // kann nur in einer Gruppe sein, Auswahl verschiebt sie dorthin statt es stillschweigend zu tun.
 function openGroupPicker(targetGroupId) {
+  pushOverlay(() => renderGroupPickerScreen(targetGroupId));
+}
+
+function renderGroupPickerScreen(targetGroupId) {
   groupPickerTargetId = targetGroupId;
   const isAddMode = targetGroupId != null;
 
@@ -1925,14 +2026,7 @@ function openGroupPicker(targetGroupId) {
 
 document.getElementById("group-create-btn").addEventListener("click", () => openGroupPicker(null));
 
-document.getElementById("trip-group-picker-back").addEventListener("click", () => {
-  if (groupPickerTargetId != null) {
-    const group = backupData.groups.find((g) => g.id === groupPickerTargetId);
-    if (group) { showScreen("group"); openTripGroup(group); return; }
-  }
-  showScreen("main");
-  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
-});
+document.getElementById("trip-group-picker-back").addEventListener("click", () => history.back());
 
 document.getElementById("trip-group-picker-confirm-btn").addEventListener("click", async () => {
   const listEl = document.getElementById("trip-group-picker-list");
@@ -1954,14 +2048,11 @@ document.getElementById("trip-group-picker-confirm-btn").addEventListener("click
       selectedTrips.forEach((trip) => replaceTripInBackupData(trip, { ...trip, groupId: groupPickerTargetId }));
     }
     await pushBackupConflictSafe();
-
-    if (groupPickerTargetId != null) {
-      const group = backupData.groups.find((g) => g.id === groupPickerTargetId);
-      if (group) { showScreen("group"); openTripGroup(group); }
-    } else {
-      showScreen("main");
-      setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
-    }
+    // Eine Ebene zurück - Erstellen-Modus landet auf "main" (Picker wurde direkt von dort aus
+    // geöffnet), Hinzufügen-Modus auf der (weiterhin im Stack vorhandenen) Gruppen-Detailseite, die
+    // ihre Mitgliedsfahrten beim erneuten Anzeigen automatisch frisch aus backupData.trips liest -
+    // keine manuelle Navigation zu einem bestimmten Ziel nötig.
+    history.back();
   } catch (e) {
     alert("Speichern fehlgeschlagen: " + (e.message || e));
   } finally {
@@ -2088,7 +2179,12 @@ function pendingMarksChanged() {
   return JSON.stringify(editPendingMarks) !== JSON.stringify(parseSegmentMarks(editTrip));
 }
 
+/** Öffnet den Bearbeiten-Screen als neue Navigations-Ebene über der Detailseite. */
 function openTripEdit(trip) {
+  pushOverlay(() => renderTripEditScreen(trip));
+}
+
+function renderTripEditScreen(trip) {
   editTrip = trip;
   editPendingLabels = labelList(trip);
   editPendingMarks = parseSegmentMarks(trip);
@@ -2543,16 +2639,43 @@ function currentEditLabelsString() {
     .join(",");
 }
 
-async function saveAndCloseEditScreen(updatedTrip) {
+/**
+ * Schließt den Bearbeiten-Screen und zeigt die (bereits im Stack vorhandene, kein neuer History-
+ * Eintrag nötig) Detail-Ebene mit dem aktualisierten Trip. Zwei Aufrufer mit unterschiedlichem
+ * History-Stand:
+ * - vom "Änderungen anwenden"-Button: History-Eintrag der Edit-Ebene noch nicht konsumiert, wird
+ *   hier selbst über history.back() konsumiert (editBackAlreadyDecided verhindert, dass der
+ *   generische popstate-Handler dafür nochmal attemptEditBack()s Rückfrage durchläuft - die
+ *   Entscheidung "verlassen" ist ja bereits gefallen).
+ * - aus attemptEditBack()s wantsSave-Zweig: wird NUR über popstate erreicht, der Browser hat den
+ *   History-Eintrag zu diesem Zeitpunkt schon konsumiert, daher hier kein weiteres history.back().
+ */
+async function finishEditAndReturnToDetail(updatedTrip, viaHistoryBack) {
   const applyBtn = document.getElementById("edit-apply-btn");
   applyBtn.disabled = true;
   try {
     await pushBackupConflictSafe();
     editTrip = null;
-    showScreen("detail");
-    openTripDetail(updatedTrip);
+    overlayStack.pop(); // Edit-Ebene raus
+    if (overlayStack.length > 0) {
+      overlayStack[overlayStack.length - 1] = () => renderTripDetailScreen(updatedTrip);
+    }
+    if (viaHistoryBack) {
+      editBackAlreadyDecided = true;
+      history.back();
+    } else if (overlayStack.length > 0) {
+      overlayStack[overlayStack.length - 1]();
+    } else {
+      closeAllOverlaysToMain();
+    }
   } catch (e) {
     alert("Speichern fehlgeschlagen: " + (e.message || e));
+    if (viaHistoryBack) {
+      // History wurde durch die Zurück-Taste schon konsumiert, aber das Speichern ist
+      // fehlgeschlagen - Bearbeiten-Screen bleibt sichtbar, also den Eintrag wiederherstellen,
+      // sonst bräuchte ein erneuter Zurück-Versuch nur noch einen Klick.
+      history.pushState({ depth: overlayStack.length + 1 }, "");
+    }
   } finally {
     applyBtn.disabled = false;
   }
@@ -2576,16 +2699,30 @@ document.getElementById("edit-apply-btn").addEventListener("click", () => {
     return;
   }
   replaceTripInBackupData(editTrip, updatedTrip);
-  saveAndCloseEditScreen(updatedTrip);
+  finishEditAndReturnToDetail(updatedTrip, true);
 });
 
+/**
+ * Wird NUR über popstate aufgerufen (siehe Handler weiter oben) - sowohl vom "Zurück"-Button
+ * (löst nur history.back() aus, siehe unten) als auch von der echten Browser-Zurück-Taste. Bei
+ * ungespeicherten Änderungen kann die Navigation abgebrochen werden; da der Browser die Zurück-
+ * Taste zu diesem Zeitpunkt aber schon "ausgeführt" hat, wird der History-Eintrag in dem Fall
+ * künstlich wiederhergestellt (history.pushState), statt dass ein zweiter Zurück-Versuch nur noch
+ * einen Klick bräuchte.
+ */
 function attemptEditBack() {
   const hasUnsavedMetadata = pendingLabelsChanged() || pendingMarksChanged();
   const hasUnappliedCuts = editPendingActions.length > 0;
 
-  if (!hasUnsavedMetadata && !hasUnappliedCuts) {
+  function leaveCleanly() {
     editTrip = null;
-    showScreen("detail");
+    overlayStack.pop();
+    if (overlayStack.length > 0) overlayStack[overlayStack.length - 1]();
+    else closeAllOverlaysToMain();
+  }
+
+  if (!hasUnsavedMetadata && !hasUnappliedCuts) {
+    leaveCleanly();
     return;
   }
 
@@ -2604,21 +2741,25 @@ function attemptEditBack() {
         maxSpeedKmh: newMax,
       };
       replaceTripInBackupData(editTrip, updatedTrip);
-      saveAndCloseEditScreen(updatedTrip);
+      finishEditAndReturnToDetail(updatedTrip, false);
       return;
     }
-  } else if (hasUnappliedCuts) {
-    if (!confirm("Geplante Zuschnitte wurden noch nicht angewendet und gehen beim Verlassen verloren. Trotzdem verlassen?")) {
-      return;
-    }
+    // wantsSave === false bedeutet laut Dialogtext "Verwerfen und verlassen", kein Abbrechen-Pfad
+    // in diesem konkreten Dialog.
+    leaveCleanly();
+    return;
   }
-  const trip = editTrip;
-  editTrip = null;
-  showScreen("detail");
-  openTripDetail(trip);
+
+  // Nur hasUnappliedCuts (keine Label/Marken-Änderungen) - hier gibt es einen echten
+  // Abbrechen-Pfad ("Bleiben").
+  if (!confirm("Geplante Zuschnitte wurden noch nicht angewendet und gehen beim Verlassen verloren. Trotzdem verlassen?")) {
+    history.pushState({ depth: overlayStack.length + 1 }, "");
+    return;
+  }
+  leaveCleanly();
 }
 
-document.getElementById("trip-edit-back").addEventListener("click", attemptEditBack);
+document.getElementById("trip-edit-back").addEventListener("click", () => history.back());
 
 // Selber globaler Resize-Handler-Ansatz wie bei der Detailseite, nur für den Bearbeiten-Graphen.
 window.addEventListener("resize", () => { if (editGraphRedraw) editGraphRedraw(); });
