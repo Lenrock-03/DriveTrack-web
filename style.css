@@ -153,6 +153,18 @@ input:focus {
   font-size: 0.9rem;
 }
 
+/* Manuelles "Jetzt aktualisieren" (seit v1.8.0) - Pendant zum Runterziehen in der Android-App,
+   löst denselben konfliktsicheren Sync aus statt auf den nächsten automatischen Anlass zu warten. */
+.refresh-btn:disabled {
+  cursor: default;
+  animation: refresh-pulse 0.8s ease-in-out infinite;
+}
+@keyframes refresh-pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
 .layout {
   display: flex;
   height: calc(100vh - 57px);

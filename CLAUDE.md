@@ -99,6 +99,11 @@ der App (seit App 0.3.0). Nur aktiv, wenn eingeloggt+entsperrt UND man gerade au
 (`canAutoRefreshNow()`) – bewusst NICHT in der Fahrt-Detail- oder Settings-Ansicht, damit kein
 Reload mitten in einer Interaktion die Ansicht wegreißt.
 
+Seit v1.8.0 zusätzlich manuell per **"🔄 Aktualisieren"-Button** in der Kopfzeile (`#refresh-btn`,
+ruft direkt `loadAndRenderBackup()` auf) – Pendant zum Runterziehen-Gesture auf der Fahrtenliste
+der Android-App (0.12.0). Rein lesend (pullt nur); lokale Bearbeitungen werden bereits beim
+Speichern selbst gepusht (`pushBackupConflictSafe()`), kein zusätzlicher Push hier nötig.
+
 ## Fahrten bearbeiten + Abschnitte ansehen (seit v1.7.0)
 
 1:1-Port der Android-App-Funktionen aus 0.8.0–0.11.0 (`data/TripGeoMath.kt`/`TripEditScreen.kt`).

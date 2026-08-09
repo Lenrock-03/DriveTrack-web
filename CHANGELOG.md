@@ -8,6 +8,12 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.8.0] - 2026-08-09
+
+### Hinzugefügt
+- **"🔄 Aktualisieren"-Button** in der Kopfzeile: lädt sofort neu vom Server, ohne erst in die
+  Einstellungen zu müssen - Pendant zum neuen Runterziehen-Gesture in der Android-App (0.12.0).
+
 ## [1.7.0] - 2026-08-09
 
 ### Hinzugefügt

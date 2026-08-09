@@ -374,6 +374,22 @@ document.getElementById("settings-reload-btn").addEventListener("click", async (
   setTimeout(() => statusEl.classList.add("hidden"), 2500);
 });
 
+// "Jetzt aktualisieren" direkt in der Kopfzeile (seit v1.8.0) - Pendant zum Runterziehen in der
+// App, damit man nicht erst in die Einstellungen muss, um mit anderen Geräten aktuell zu bleiben.
+// Rein lesend (loadAndRenderBackup() pullt nur) - lokale Bearbeitungen werden bereits beim
+// Speichern selbst hochgeladen (pushBackupConflictSafe()), kein zusätzlicher Push hier nötig.
+document.getElementById("refresh-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("refresh-btn");
+  btn.disabled = true;
+  try {
+    await loadAndRenderBackup();
+  } catch (e) {
+    // still, kein alert() nötig - loadAndRenderBackup() lässt den bisherigen Stand einfach stehen
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // Einzige Quelle der Wahrheit für die Versionsnummer ist der <meta name="app-version">-Tag in
 // index.html (kein Build-Step hier, der eine Konstante an mehreren Stellen einsetzen könnte).
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "?";
