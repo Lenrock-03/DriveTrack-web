@@ -54,6 +54,7 @@ const screens = {
   detail: document.getElementById("trip-detail-screen"),
   edit: document.getElementById("trip-edit-screen"),
   group: document.getElementById("trip-group-screen"),
+  groupRoute: document.getElementById("trip-group-route-screen"),
   groupPicker: document.getElementById("trip-group-picker-screen"),
   settings: document.getElementById("settings-screen"),
 };
@@ -949,7 +950,7 @@ function renderTripList(entries) {
  * eine gerade "Teleport"-Linie zwischen dem Ziel der einen und dem Start der nächsten Fahrt
  * gezeichnet. Spiegelt MapThumbnailGenerator.renderThumbnail() (mehrere Punktlisten) der App.
  */
-function drawGroupRouteThumbnail(canvas, tripsPointLists) {
+function drawGroupRouteThumbnail(canvas, tripsPointLists, pad = 6) {
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#241f19";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -969,7 +970,6 @@ function drawGroupRouteThumbnail(canvas, tripsPointLists) {
 
   const latRange = Math.max(maxLat - minLat, 0.00001);
   const lonRange = Math.max(maxLon - minLon, 0.00001);
-  const pad = 6;
   const scale = Math.min((canvas.width - pad * 2) / lonRange, (canvas.height - pad * 2) / latRange);
   const drawnW = lonRange * scale, drawnH = latRange * scale;
   const offX = (canvas.width - drawnW) / 2;
@@ -1717,6 +1717,21 @@ document.getElementById("group-route-color-mode").addEventListener("change", (e)
   }
 });
 
+/**
+ * Statische Vorschau-Kachel (kein Leaflet) in der Gruppen-Detailseite - spiegelt
+ * GroupRouteMap(interactive=false) der App: reines Canvas-Thumbnail, kein Pan/Zoom, damit es nicht
+ * mit dem Scrollen der Seite kollidiert. Größerer Rand (16px statt der 6px bei den kleinen
+ * 56x56-Listen-Thumbnails) für die deutlich größere Kachel hier.
+ */
+function renderGroupThumbnailPreview(trips) {
+  const canvas = document.getElementById("trip-group-thumb-canvas");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  drawGroupRouteThumbnail(canvas, trips.map(parseTripPoints), 16 * dpr);
+}
+
 function openTripGroup(group) {
   currentGroup = group;
   const trips = backupData.trips.filter((t) => t.groupId === group.id);
@@ -1737,6 +1752,22 @@ function openTripGroup(group) {
   renderGroupMembers(trips);
 
   showScreen("group");
+  renderGroupThumbnailPreview(trips);
+}
+
+document.getElementById("trip-group-expand-btn").addEventListener("click", () => {
+  if (currentGroup && currentGroupTrips) openTripGroupRoute(currentGroup, currentGroupTrips);
+});
+
+/**
+ * Vollbild-Karte + kombinierter Geschwindigkeits-Graph über alle Mitgliedsfahrten, erreichbar über
+ * das Vergrößerungs-Icon auf der statischen Vorschau in #trip-group-screen - spiegelt
+ * TripGroupRouteScreen.kt der App (dort ebenfalls ein eigener Screen, nicht Teil der normalen
+ * Gruppenansicht).
+ */
+function openTripGroupRoute(group, trips) {
+  document.getElementById("trip-group-route-title").textContent = group.name;
+  showScreen("groupRoute");
   applyGroupRouteColorModeSelection();
 
   // Karte erst nach dem Sichtbarwerden initialisieren (Leaflet braucht sichtbare Größe, siehe
@@ -1766,6 +1797,10 @@ function openTripGroup(group) {
     renderGroupSpeedGraph(trips);
   }, 50);
 }
+
+document.getElementById("trip-group-route-back").addEventListener("click", () => {
+  showScreen("group");
+});
 
 document.getElementById("trip-group-back").addEventListener("click", () => {
   showScreen("main");
@@ -2653,6 +2688,7 @@ function canAutoRefreshNow() {
   return Boolean(session && dek) && (screens.detail.classList.contains("hidden")) &&
     (screens.edit.classList.contains("hidden")) &&
     (screens.group.classList.contains("hidden")) &&
+    (screens.groupRoute.classList.contains("hidden")) &&
     (screens.groupPicker.classList.contains("hidden")) &&
     (screens.settings.classList.contains("hidden"));
 }

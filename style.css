@@ -296,7 +296,7 @@ input:focus {
   position: relative;
 }
 
-#map, #trip-detail-map {
+#map, #trip-detail-map, #trip-group-map {
   width: 100%;
   height: 100%;
   background: var(--surface);
@@ -463,6 +463,43 @@ input:focus {
   /* Ohne das schrumpft ein Flex-Kind standardmäßig nicht unter seine Inhaltsgröße - dadurch würde
      der Graph darunter bei kurzen Fenstern aus dem sichtbaren Bereich rausgedrückt */
   min-height: 0;
+}
+
+/* Statische Kartenvorschau in der Gruppen-Detailseite (seit v1.9.0) - spiegelt GroupRouteMap
+   (interactive=false) + Vergrößerungs-Icon in TripGroupDetailScreen.kt der App: reines Canvas-
+   Thumbnail statt einer echten (Leaflet-)Karte, feste Höhe statt flex:1 wie bei .detail-map-wrap -
+   dieser Screen hat durch die Mitgliedsfahrten-Liste darunter ohnehin schon genug Eigenhöhe, die
+   Vorschau soll dabei nicht mit ihr um Platz konkurrieren, sondern einfach mitscrollen. */
+.group-map-preview {
+  position: relative;
+  height: 200px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface);
+}
+#trip-group-thumb-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.group-map-expand-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--surface-variant);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.group-map-expand-btn:hover {
+  border-color: var(--primary);
 }
 
 .route-color-selector {

@@ -205,6 +205,28 @@
       <h2 id="trip-group-title"></h2>
       <div class="detail-stats" id="trip-group-stats"></div>
     </div>
+    <div class="edit-content">
+      <!-- Statische Vorschau (kein Leaflet) - Vergrößerungs-Icon öffnet die interaktive
+           Vollbild-Karte samt Graph in #trip-group-route-screen, spiegelt GroupRouteMap
+           (interactive=false) + Vergrößerungs-Icon in TripGroupDetailScreen.kt der App. -->
+      <div class="group-map-preview" id="trip-group-map-preview">
+        <canvas id="trip-group-thumb-canvas"></canvas>
+        <button id="trip-group-expand-btn" class="group-map-expand-btn" title="Große Karte mit Graph öffnen">⛶</button>
+      </div>
+
+      <div class="edit-section-label">Fahrten in dieser Gruppe</div>
+      <div id="trip-group-members" class="trip-list"></div>
+      <button id="group-add-trips-btn" class="secondary-btn full-width">Fahrten hinzufügen</button>
+      <button id="group-delete-btn" class="danger-btn">Gruppe löschen</button>
+    </div>
+  </div>
+
+  <!-- Fahrten-Gruppe: Vollbild-Karte + kombinierter Graph (seit v1.9.0) -->
+  <div id="trip-group-route-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="trip-group-route-back">&larr; Zurück</button>
+    <div class="detail-info">
+      <h2 id="trip-group-route-title"></h2>
+    </div>
     <div class="detail-map-wrap">
       <div id="trip-group-map"></div>
       <div class="route-color-selector">
@@ -231,12 +253,6 @@
         <div id="group-graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
         <canvas id="group-graph-canvas"></canvas>
       </div>
-    </div>
-    <div class="edit-content">
-      <div class="edit-section-label">Fahrten in dieser Gruppe</div>
-      <div id="trip-group-members" class="trip-list"></div>
-      <button id="group-add-trips-btn" class="secondary-btn full-width">Fahrten hinzufügen</button>
-      <button id="group-delete-btn" class="danger-btn">Gruppe löschen</button>
     </div>
   </div>
 
