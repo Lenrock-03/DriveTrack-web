@@ -8,6 +8,13 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.10.1] - 2026-08-09
+
+### Geändert
+- **"Zurück"-Buttons als richtige Buttons gestaltet**: orange mit weißer Schrift statt reinem Text-
+  Link (`.back-btn`) - betrifft Fahrt-Detail, Bearbeiten, Gruppe, Gruppen-Route, Gruppen-Picker und
+  Einstellungen.
+
 ## [1.10.0] - 2026-08-09
 
 ### Hinzugefügt

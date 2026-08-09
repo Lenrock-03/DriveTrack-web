@@ -333,13 +333,24 @@ input:focus {
 }
 
 .back-btn {
-  background: none;
+  /* .overlay-screen ist ein Flex-Column-Container ohne align-items - Kinder würden ohne das per
+     Default auf volle Breite gestreckt (stretch), das ergäbe hier einen ganzflächigen orangenen
+     Balken statt eines kompakten Buttons. */
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary);
+  color: #fff;
   border: none;
-  color: var(--text);
-  font-size: 0.95rem;
-  text-align: left;
-  padding: 16px 20px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  margin: 16px 20px;
   cursor: pointer;
+}
+.back-btn:hover {
+  filter: brightness(1.08);
 }
 
 .edit-btn {
