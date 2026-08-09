@@ -6,7 +6,7 @@ const STORAGE_KEY = "drivetrack_session";
 // --- Zustand ---
 let session = loadSession(); // { token, username, email, passwordSalt, dekWrappedPassword } | null
 let dek = null; // NIE persistiert, nur im Speicher dieser Seite
-let backupData = { users: [], cars: [], trips: [] };
+let backupData = { users: [], cars: [], trips: [], groups: [] };
 let selectedCarId = "";
 let currentTab = "home";
 let mainMap = null;
@@ -16,6 +16,14 @@ let graphScrubMarker = null; // Leaflet-Marker auf detailMap, zeigt die im Graph
 let currentGraphRedraw = null; // Redraw-Funktion der gerade offenen Fahrt, für den globalen Resize-Handler
 let currentDetailTrip = null; // Fahrt der gerade offenen Detail-Ansicht, für den Farbmodus-Umschalter
 let routeLineLayers = []; // Aktuell auf detailMap gezeichnete Routen-Layer (Linie(n) + Hover-Trefferfläche)
+// Fahrten-Gruppen (seit v1.9.0) - siehe TripGrouping.kt in der App
+let groupMap = null; // Leaflet-Karte in #trip-group-screen (eigene Instanz, spiegelt detailMap)
+let groupGraphScrubMarker = null;
+let currentGroupGraphRedraw = null;
+let currentGroupTrips = null; // Mitgliedsfahrten der gerade offenen Gruppe, für den Farbmodus-Umschalter
+let currentGroup = null; // Gruppe der gerade offenen Gruppen-Detailseite
+let groupRouteLineLayers = [];
+let groupPickerTargetId = null; // null = Erstellen-Modus, sonst Hinzufügen-Modus zu dieser Gruppe
 
 // --- Session-Verwaltung (localStorage: nur Token/Salt/verpackter DEK, nie Passwort/DEK selbst) ---
 function loadSession() {
@@ -45,6 +53,8 @@ const screens = {
   main: document.getElementById("main-app"),
   detail: document.getElementById("trip-detail-screen"),
   edit: document.getElementById("trip-edit-screen"),
+  group: document.getElementById("trip-group-screen"),
+  groupPicker: document.getElementById("trip-group-picker-screen"),
   settings: document.getElementById("settings-screen"),
 };
 function showScreen(name) {
@@ -266,6 +276,7 @@ async function loadAndRenderBackup() {
     users: parsed.users || [],
     cars: parsed.cars || [],
     trips: parsed.trips || [],
+    groups: parsed.groups || [],
   };
   if (result.id != null) setLastKnownBackupId(result.id);
   renderCarSelector();
@@ -326,11 +337,27 @@ function mergeBackupDataOverwrite(target, remote) {
     }
   });
 
+  // Gruppen (seit v1.9.0) - exakt dasselbe Muster wie carIdMap oben, spiegelt groupIdMap in
+  // BackupExporter.kt der App.
+  if (!target.groups) target.groups = [];
+  const groupIdMap = new Map();
+  (remote.groups || []).forEach((g) => {
+    const existing = target.groups.find((tg) => tg.name.toLowerCase() === g.name.toLowerCase());
+    if (existing) {
+      groupIdMap.set(g.id, existing.id);
+    } else {
+      const newId = nextLocalId(target.groups);
+      target.groups.push({ id: newId, name: g.name });
+      groupIdMap.set(g.id, newId);
+    }
+  });
+
   let overwritten = 0;
   let added = 0;
   (remote.trips || []).forEach((t) => {
     const newCarId = t.carId != null && carIdMap.has(t.carId) ? carIdMap.get(t.carId) : null;
-    const tripObj = { ...t, carId: newCarId };
+    const newGroupId = t.groupId != null && groupIdMap.has(t.groupId) ? groupIdMap.get(t.groupId) : null;
+    const tripObj = { ...t, carId: newCarId, groupId: newGroupId };
     const existingIdx = target.trips.findIndex(
       (existing) => existing.startTimestamp === t.startTimestamp && existing.endTimestamp === t.endTimestamp
     );
@@ -374,6 +401,7 @@ async function pushBackupConflictSafe() {
     users: backupData.users,
     cars: backupData.cars,
     trips: backupData.trips,
+    groups: backupData.groups,
   });
   const encrypted = await cryptoUtil.encryptWithDek(json, dek);
   const uploadResult = await api.uploadBackup(session.token, encrypted.ciphertextBase64, encrypted.ivBase64);
@@ -781,16 +809,68 @@ function renderSegmentMarkLines(trip) {
 // --- Rendering ---
 function renderTab() {
   const trips = filteredTrips();
+  const entries = buildTripListEntries(trips, backupData.groups || []);
 
   if (currentTab === "home") {
     document.getElementById("stats-panel").classList.remove("hidden");
     renderStats(trips);
-    renderTripList(trips.slice(0, 5));
+    renderTripList(entries.slice(0, 5));
   } else {
     document.getElementById("stats-panel").classList.add("hidden");
-    renderTripList(trips);
+    renderTripList(entries);
   }
   renderMainMap(trips);
+}
+
+// --- Fahrten gruppieren (seit v1.9.0) - JS-Port von data/TripGrouping.kt der App ---
+
+/**
+ * Baut aus der flachen Fahrten-/Gruppen-Liste die gemischten Einträge für die Fahrtenliste:
+ * gruppierte Fahrten erscheinen als EIN zusammengefasster Eintrag statt einzeln, ungruppierte
+ * Fahrten unverändert einzeln. Sortiert nach der jeweils neuesten Fahrt absteigend (eine Gruppe
+ * "zählt" wie ihre neueste Mitgliedsfahrt). Leere Gruppen (letzte Fahrt entfernt) werden hier
+ * herausgefiltert, aber NICHT automatisch gelöscht - spiegelt buildTripListEntries() 1:1.
+ */
+function buildTripListEntries(trips, groups) {
+  const tripsByGroupId = new Map();
+  const ungrouped = [];
+  trips.forEach((t) => {
+    if (t.groupId != null) {
+      if (!tripsByGroupId.has(t.groupId)) tripsByGroupId.set(t.groupId, []);
+      tripsByGroupId.get(t.groupId).push(t);
+    } else {
+      ungrouped.push(t);
+    }
+  });
+
+  const groupEntries = groups
+    .map((g) => {
+      const groupTrips = tripsByGroupId.get(g.id);
+      if (!groupTrips || groupTrips.length === 0) return null;
+      const sorted = [...groupTrips].sort((a, b) => b.startTimestamp - a.startTimestamp);
+      return { type: "group", group: g, trips: sorted, sortTimestamp: sorted[0].startTimestamp };
+    })
+    .filter(Boolean);
+
+  const singleEntries = ungrouped.map((t) => ({ type: "trip", trip: t, sortTimestamp: t.startTimestamp }));
+
+  return [...groupEntries, ...singleEntries].sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+}
+
+/**
+ * Gesamt-Statistik über mehrere Fahrten (für eine Gruppe) - spiegelt List<Trip>.groupStats() aus
+ * data/TripGrouping.kt: Summe km, Summe Fahrzeit (Gesamtdauer MINUS pausedMinutes je Fahrt - anders
+ * als renderStats() oben, das noch nicht auf pausedMinutes umgestellt ist), einfacher Durchschnitt
+ * der Einzel-Ø-Geschwindigkeiten, Max der Einzel-Höchstgeschwindigkeiten.
+ */
+function computeGroupStats(trips) {
+  const totalKm = trips.reduce((sum, t) => sum + t.distanceMeters, 0) / 1000;
+  const tripCount = trips.length;
+  // tripDrivingMinutes() ist weiter unten definiert (Funktionsdeklaration, daher hier bereits nutzbar).
+  const totalDrivingMinutes = trips.reduce((sum, t) => sum + tripDrivingMinutes(t), 0);
+  const avgSpeedKmh = trips.length ? trips.reduce((sum, t) => sum + t.avgSpeedKmh, 0) / trips.length : 0;
+  const maxSpeedKmh = trips.length ? Math.max(...trips.map((t) => t.maxSpeedKmh)) : 0;
+  return { totalKm, tripCount, totalDrivingMinutes, avgSpeedKmh, maxSpeedKmh };
 }
 
 function renderStats(trips) {
@@ -814,38 +894,101 @@ function renderStats(trips) {
   `;
 }
 
-function renderTripList(trips) {
+function renderTripList(entries) {
   const list = document.getElementById("trip-list");
   list.innerHTML = "";
 
-  if (trips.length === 0) {
+  if (entries.length === 0) {
     list.innerHTML = '<div class="empty-hint">Noch keine Fahrten vorhanden.</div>';
     return;
   }
 
-  trips.forEach((trip) => {
+  entries.forEach((entry) => {
     const row = document.createElement("div");
     row.className = "trip-row";
-
-    const durationMin = Math.round((trip.endTimestamp - trip.startTimestamp) / 60000);
-    const km = (trip.distanceMeters / 1000).toFixed(1);
 
     const canvas = document.createElement("canvas");
     canvas.width = 56;
     canvas.height = 56;
-    drawRouteThumbnail(canvas, parseTripPoints(trip));
 
     const text = document.createElement("div");
     text.className = "trip-row-text";
-    text.innerHTML = `
-      <div class="name">${escapeHtml(trip.name)}</div>
-      <div class="meta"><span>${km} km</span><span>${formatTripDuration(durationMin)}</span></div>
-    `;
 
-    row.appendChild(text);
-    row.appendChild(canvas);
-    row.addEventListener("click", () => openTripDetail(trip));
+    if (entry.type === "group") {
+      const stats = computeGroupStats(entry.trips);
+      drawGroupRouteThumbnail(canvas, entry.trips.map(parseTripPoints));
+      text.innerHTML = `
+        <div class="name">${escapeHtml(entry.group.name)}</div>
+        <div class="meta"><span>${stats.totalKm.toFixed(1)} km</span><span>${stats.tripCount} Fahrten</span></div>
+        <div class="trip-row-group-badge">📁 Gruppe</div>
+      `;
+      row.appendChild(text);
+      row.appendChild(canvas);
+      row.addEventListener("click", () => openTripGroup(entry.group));
+    } else {
+      const trip = entry.trip;
+      const durationMin = Math.round((trip.endTimestamp - trip.startTimestamp) / 60000);
+      const km = (trip.distanceMeters / 1000).toFixed(1);
+      drawRouteThumbnail(canvas, parseTripPoints(trip));
+      text.innerHTML = `
+        <div class="name">${escapeHtml(trip.name)}</div>
+        <div class="meta"><span>${km} km</span><span>${formatTripDuration(durationMin)}</span></div>
+      `;
+      row.appendChild(text);
+      row.appendChild(canvas);
+      row.addEventListener("click", () => openTripDetail(trip));
+    }
+
     list.appendChild(row);
+  });
+}
+
+/**
+ * Wie drawRouteThumbnail(), aber über die kombinierten Routen mehrerer Fahrten - jede Fahrt bekommt
+ * einen eigenen, unverbundenen Pfad (kein moveTo/lineTo über mehrere Fahrten hinweg), sonst würde
+ * eine gerade "Teleport"-Linie zwischen dem Ziel der einen und dem Start der nächsten Fahrt
+ * gezeichnet. Spiegelt MapThumbnailGenerator.renderThumbnail() (mehrere Punktlisten) der App.
+ */
+function drawGroupRouteThumbnail(canvas, tripsPointLists) {
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#241f19";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  let any = false;
+  tripsPointLists.forEach((points) => {
+    points.forEach(([lat, lon]) => {
+      any = true;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    });
+  });
+  if (!any) return;
+
+  const latRange = Math.max(maxLat - minLat, 0.00001);
+  const lonRange = Math.max(maxLon - minLon, 0.00001);
+  const pad = 6;
+  const scale = Math.min((canvas.width - pad * 2) / lonRange, (canvas.height - pad * 2) / latRange);
+  const drawnW = lonRange * scale, drawnH = latRange * scale;
+  const offX = (canvas.width - drawnW) / 2;
+  const offY = (canvas.height - drawnH) / 2;
+
+  ctx.strokeStyle = "#ff7a1a";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  tripsPointLists.forEach((points) => {
+    if (points.length < 2) return;
+    ctx.beginPath();
+    points.forEach(([lat, lon], i) => {
+      const x = offX + (lon - minLon) * scale;
+      const y = offY + (maxLat - lat) * scale;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
   });
 }
 
@@ -1263,6 +1406,532 @@ document.getElementById("trip-detail-back").addEventListener("click", () => {
   showScreen("main");
   currentDetailTrip = null;
   setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+});
+
+// --- Fahrten gruppieren: Detailseite + Vollbild-Karte (seit v1.9.0) ---
+// 1:1-Port von TripGroupDetailScreen.kt/TripGroupRouteScreen.kt/GroupRouteMap.kt der App.
+
+/** Spiegelt Trip.drivingDurationMinutes (Trip.kt): Gesamtdauer minus pausedMinutes. */
+function tripDrivingMinutes(trip) {
+  return (trip.endTimestamp - trip.startTimestamp) / 60000 - (trip.pausedMinutes || 0);
+}
+
+/**
+ * Kombinierte Geschwindigkeits-/Distanz-Serie über mehrere Fahrten - spiegelt buildGroupSpeedSeries()
+ * aus data/TripGeoMath.kt der App 1:1: Fahrten chronologisch aneinandergereiht, offsetSeconds/
+ * cumulativeKm laufen durchgehend weiter (keine echte Kalenderzeit-Lücke zwischen den Fahrten im
+ * Graphen), die Geschwindigkeit wird aber NIE über die Nahtstelle zwischen zwei Fahrten hinweg
+ * berechnet - jede Fahrt läuft durch buildSpeedSeries() als eigene, isolierte Punktreihe, sonst
+ * würde die Luftlinien-"Geschwindigkeit" zwischen dem Ziel einer Fahrt und dem Start der nächsten
+ * als astronomischer Ausreißer im Graphen erscheinen.
+ */
+function buildGroupSpeedSeries(trips) {
+  let offsetBase = 0;
+  let cumulativeBase = 0;
+  const result = [];
+
+  [...trips].sort((a, b) => a.startTimestamp - b.startTimestamp).forEach((trip) => {
+    const raw = buildSpeedSeries(parseTripPointsWithTime(trip));
+    if (raw.length < 2) return;
+
+    raw.forEach((p) => {
+      result.push({ ...p, offsetSeconds: offsetBase + p.offsetSeconds, cumulativeKm: cumulativeBase + p.cumulativeKm });
+    });
+
+    offsetBase += raw[raw.length - 1].offsetSeconds;
+    cumulativeBase += raw[raw.length - 1].cumulativeKm;
+  });
+  return result;
+}
+
+/** Wie getTripSpeedSeries(), nur für die kombinierte Serie mehrerer Fahrten. */
+function getGroupSpeedSeries(trips) {
+  const rawPoints = buildGroupSpeedSeries(trips);
+  if (rawPoints.length < 2) return [];
+  const filtered = medianFilterSpeeds(rawPoints);
+  return filtered.map((p) =>
+    p.speedKmh > PLAUSIBLE_MAX_CAR_KMH ? { ...p, speedKmh: PLAUSIBLE_MAX_CAR_KMH } : p
+  );
+}
+
+/**
+ * Zeichnet die Routen-Linien ALLER Mitgliedsfahrten auf groupMap neu - Standard-Farbe (eine Linie je
+ * Fahrt) oder nach Geschwindigkeit eingefärbt. Für die Geschwindigkeitsfarbe zählt JE FAHRT deren
+ * eigene getTripSpeedSeries() (nicht die kombinierte Gruppen-Serie) - für die Kartenfarbe zählt nur
+ * die tatsächliche Geschwindigkeit an jedem Punkt, die Nahtstellen-Problematik betrifft nur den Graphen.
+ */
+function renderGroupRouteLine(trips) {
+  groupRouteLineLayers.forEach((l) => groupMap.removeLayer(l));
+  groupRouteLineLayers = [];
+
+  const mode = document.getElementById("group-route-color-mode").value;
+
+  trips.forEach((trip) => {
+    const points = parseTripPoints(trip);
+    if (points.length < 2) return;
+
+    if (mode === "speed") {
+      const series = getTripSpeedSeries(trip);
+      if (series.length >= 2) {
+        const step = Math.max(1, Math.ceil((series.length - 1) / MAX_ROUTE_COLOR_SEGMENTS));
+        let i = 0;
+        while (i < series.length - 1) {
+          const end = Math.min(i + step, series.length - 1);
+          const segPoints = [];
+          let speedSum = 0;
+          for (let j = i; j <= end; j++) {
+            segPoints.push([series[j].lat, series[j].lon]);
+            speedSum += series[j].speedKmh;
+          }
+          const avgSpeed = speedSum / (end - i + 1);
+          const segment = L.polyline(segPoints, { color: speedToColor(avgSpeed), weight: 5 }).addTo(groupMap);
+          groupRouteLineLayers.push(segment);
+          i = end;
+        }
+      }
+    } else {
+      const line = L.polyline(points, { color: "#ff7a1a", weight: 5, opacity: 0.9 }).addTo(groupMap);
+      groupRouteLineLayers.push(line);
+    }
+  });
+}
+
+/**
+ * Kombinierter Geschwindigkeits-Graph über alle Mitgliedsfahrten - eigenständiger Klon von
+ * renderSpeedGraph() (bewusst NICHT wiederverwendet, das ist fest an detailMap/#speed-graph-canvas
+ * gebunden, spiegelt dasselbe Vorgehen wie renderEditGraph() für den Bearbeiten-Screen), gebunden an
+ * groupMap/#group-graph-canvas.
+ */
+function renderGroupSpeedGraph(trips) {
+  const canvas = document.getElementById("group-graph-canvas");
+  const chip = document.getElementById("group-graph-info-chip");
+  const emptyHint = document.getElementById("group-graph-empty-hint");
+  const ctx = canvas.getContext("2d");
+
+  const points = getGroupSpeedSeries(trips);
+  if (points.length < 2) {
+    canvas.classList.add("hidden");
+    chip.classList.add("hidden");
+    emptyHint.classList.remove("hidden");
+    currentGroupGraphRedraw = null;
+    return;
+  }
+  canvas.classList.remove("hidden");
+  chip.classList.remove("hidden");
+  emptyHint.classList.add("hidden");
+
+  const maxSpeed = Math.max(1, trips.length ? Math.max(...trips.map((t) => t.maxSpeedKmh || 0)) : 0);
+  const scaleMax = niceCeilSpeed(maxSpeed);
+  const totalDuration = Math.max(1, points[points.length - 1].offsetSeconds);
+  let selectedIndex = points.length - 1;
+  const leftGutter = 34;
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function updateChip() {
+    const p = points[selectedIndex];
+    const time = new Date(p.timestamp).toLocaleTimeString("de-DE");
+    chip.innerHTML =
+      `<span>🕐 ${time}</span>` +
+      `<span>📍 ${p.cumulativeKm.toFixed(2)} km</span>` +
+      `<span>⚡ ${Math.round(p.speedKmh)} km/h</span>`;
+  }
+
+  function updateMapMarker() {
+    if (!groupMap) return;
+    const p = points[selectedIndex];
+    if (!groupGraphScrubMarker) {
+      groupGraphScrubMarker = L.circleMarker([p.lat, p.lon], {
+        radius: 8, color: "#fff", weight: 2, fillColor: "#ff7a1a", fillOpacity: 1,
+      }).addTo(groupMap);
+    } else {
+      groupGraphScrubMarker.setLatLng([p.lat, p.lon]);
+    }
+  }
+
+  function draw() {
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    ctx.clearRect(0, 0, w, h);
+    const plotW = Math.max(1, w - leftGutter);
+
+    ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    [0, 1 / 3, 2 / 3, 1].forEach((frac) => {
+      const y = h - frac * h;
+      const value = Math.round(scaleMax * frac);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftGutter, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(237, 224, 212, 0.55)";
+      ctx.fillText(`${value}`, leftGutter - 6, Math.min(h - 6, Math.max(7, y)));
+    });
+
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = leftGutter + (p.offsetSeconds / totalDuration) * plotW;
+      const y = h - Math.min(1, p.speedKmh / scaleMax) * h;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    const sel = points[selectedIndex];
+    const selX = leftGutter + (sel.offsetSeconds / totalDuration) * plotW;
+    const selY = h - Math.min(1, sel.speedKmh / scaleMax) * h;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(237, 224, 212, 0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(selX, 0);
+    ctx.lineTo(selX, h);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ff7a1a";
+    ctx.stroke();
+  }
+
+  function selectAtClientX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const plotW = Math.max(1, rect.width - leftGutter);
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left - leftGutter) / plotW));
+    selectedIndex = Math.min(points.length - 1, Math.max(0, Math.round(fraction * (points.length - 1))));
+    updateChip();
+    updateMapMarker();
+    draw();
+  }
+
+  let dragging = false;
+  canvas.onpointerdown = (e) => {
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    selectAtClientX(e.clientX);
+  };
+  canvas.onpointermove = (e) => {
+    if (dragging || e.pointerType === "mouse") {
+      selectAtClientX(e.clientX);
+    }
+  };
+  canvas.onpointerup = () => { dragging = false; };
+  canvas.onpointercancel = () => { dragging = false; };
+
+  currentGroupGraphRedraw = () => { resizeCanvas(); draw(); };
+  resizeCanvas();
+  updateChip();
+  updateMapMarker();
+  draw();
+}
+window.addEventListener("resize", () => { if (currentGroupGraphRedraw) currentGroupGraphRedraw(); });
+
+/** Mitgliedsfahrten-Liste in der Gruppen-Detailseite - .trip-row wie überall, plus "✕"-Button zum
+ * Entfernen aus der Gruppe (löscht die Fahrt selbst nicht, setzt nur groupId zurück). */
+function renderGroupMembers(trips) {
+  const container = document.getElementById("trip-group-members");
+  container.innerHTML = "";
+
+  if (trips.length === 0) {
+    container.innerHTML = '<div class="empty-hint">Noch keine Fahrten in dieser Gruppe.</div>';
+    return;
+  }
+
+  [...trips].sort((a, b) => b.startTimestamp - a.startTimestamp).forEach((trip) => {
+    const row = document.createElement("div");
+    row.className = "trip-row";
+
+    const durationMin = Math.round((trip.endTimestamp - trip.startTimestamp) / 60000);
+    const km = (trip.distanceMeters / 1000).toFixed(1);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 56;
+    canvas.height = 56;
+    drawRouteThumbnail(canvas, parseTripPoints(trip));
+
+    const text = document.createElement("div");
+    text.className = "trip-row-text";
+    text.innerHTML = `
+      <div class="name">${escapeHtml(trip.name)}</div>
+      <div class="meta"><span>${km} km</span><span>${formatTripDuration(durationMin)}</span></div>
+    `;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "trip-row-remove-btn";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Aus Gruppe entfernen";
+    removeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm(
+        `„${trip.name}“ aus „${currentGroup.name}“ entfernen? Die Fahrt selbst bleibt erhalten und ` +
+        `erscheint danach wieder einzeln in der Fahrtenliste.`
+      )) return;
+      replaceTripInBackupData(trip, { ...trip, groupId: null });
+      try {
+        await pushBackupConflictSafe();
+      } catch (err) {
+        alert("Speichern fehlgeschlagen: " + (err.message || err));
+      }
+      openTripGroup(currentGroup);
+    });
+
+    row.appendChild(text);
+    row.appendChild(canvas);
+    row.appendChild(removeBtn);
+    row.addEventListener("click", () => openTripDetail(trip));
+    container.appendChild(row);
+  });
+}
+
+function applyGroupRouteColorModeSelection() {
+  const mode = localStorage.getItem(ROUTE_COLOR_MODE_KEY) || "standard";
+  document.getElementById("group-route-color-mode").value = mode;
+  document.getElementById("group-route-color-legend").classList.toggle("hidden", mode !== "speed");
+}
+document.getElementById("group-route-color-mode").addEventListener("change", (e) => {
+  localStorage.setItem(ROUTE_COLOR_MODE_KEY, e.target.value);
+  document.getElementById("group-route-color-legend").classList.toggle("hidden", e.target.value !== "speed");
+  if (currentGroupTrips && groupMap) {
+    renderGroupRouteLine(currentGroupTrips);
+  }
+});
+
+function openTripGroup(group) {
+  currentGroup = group;
+  const trips = backupData.trips.filter((t) => t.groupId === group.id);
+  currentGroupTrips = trips;
+
+  document.getElementById("trip-group-title").textContent = group.name;
+  const stats = computeGroupStats(trips);
+  const hours = Math.floor(stats.totalDrivingMinutes / 60);
+  const minutes = Math.round(stats.totalDrivingMinutes % 60);
+  const durationText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  document.getElementById("trip-group-stats").innerHTML = `
+    <div class="stat-tile"><div class="value">${stats.totalKm.toFixed(0)} km</div><div class="label">Gesamt</div></div>
+    <div class="stat-tile"><div class="value">${stats.tripCount}</div><div class="label">Fahrten</div></div>
+    <div class="stat-tile"><div class="value">${durationText}</div><div class="label">Fahrzeit</div></div>
+    <div class="stat-tile"><div class="value">${stats.avgSpeedKmh.toFixed(0)} km/h</div><div class="label">Ø Speed</div></div>
+  `;
+
+  renderGroupMembers(trips);
+
+  showScreen("group");
+  applyGroupRouteColorModeSelection();
+
+  // Karte erst nach dem Sichtbarwerden initialisieren (Leaflet braucht sichtbare Größe, siehe
+  // openTripDetail()/CLAUDE.md-Stolperstein).
+  setTimeout(() => {
+    if (!groupMap) {
+      groupMap = L.map("trip-group-map", { zoomControl: true, preferCanvas: true }).setView([47.8, 11.7], 12);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd",
+        maxZoom: 20,
+        attribution: "&copy; OpenStreetMap &copy; CARTO",
+      }).addTo(groupMap);
+    } else {
+      groupMap.eachLayer((layer) => {
+        if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) groupMap.removeLayer(layer);
+      });
+      groupGraphScrubMarker = null;
+      groupRouteLineLayers = [];
+    }
+
+    renderGroupRouteLine(trips);
+    const allPoints = [];
+    trips.forEach((t) => parseTripPoints(t).forEach((p) => allPoints.push(p)));
+    if (allPoints.length > 0) groupMap.fitBounds(allPoints, { padding: [30, 30] });
+    groupMap.invalidateSize();
+
+    renderGroupSpeedGraph(trips);
+  }, 50);
+}
+
+document.getElementById("trip-group-back").addEventListener("click", () => {
+  showScreen("main");
+  currentGroup = null;
+  currentGroupTrips = null;
+  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+});
+
+document.getElementById("trip-group-rename-btn").addEventListener("click", async () => {
+  if (!currentGroup) return;
+  const newName = prompt("Neuer Name:", currentGroup.name);
+  if (newName == null) return; // abgebrochen
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === currentGroup.name) return;
+  const idx = backupData.groups.indexOf(currentGroup);
+  if (idx === -1) return;
+  backupData.groups[idx] = { ...currentGroup, name: trimmed };
+  try {
+    await pushBackupConflictSafe();
+  } catch (e) {
+    alert("Speichern fehlgeschlagen: " + (e.message || e));
+  }
+  openTripGroup(backupData.groups[idx]);
+});
+
+document.getElementById("group-delete-btn").addEventListener("click", async () => {
+  if (!currentGroup) return;
+  if (!confirm(
+    `„${currentGroup.name}“ wird gelöscht. Die enthaltenen Fahrten bleiben erhalten und erscheinen ` +
+    `danach wieder einzeln in der Fahrtenliste.`
+  )) return;
+
+  const groupId = currentGroup.id;
+  backupData.trips
+    .filter((t) => t.groupId === groupId)
+    .forEach((t) => replaceTripInBackupData(t, { ...t, groupId: null }));
+  backupData.groups = backupData.groups.filter((g) => g.id !== groupId);
+
+  try {
+    await pushBackupConflictSafe();
+  } catch (e) {
+    alert("Löschen fehlgeschlagen: " + (e.message || e));
+  }
+  currentGroup = null;
+  showScreen("main");
+  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+});
+
+document.getElementById("group-add-trips-btn").addEventListener("click", () => {
+  if (!currentGroup) return;
+  openGroupPicker(currentGroup.id);
+});
+
+// --- Fahrten gruppieren: Erstellen/Hinzufügen-Checkliste (seit v1.9.0) ---
+// Spiegelt TripGroupPickerScreen.kt der App: targetGroupId == null -> Erstellen-Modus (Namensfeld +
+// Checkliste aller Fahrten), sonst Hinzufügen-Modus (kein Namensfeld, Checkliste aller Fahrten, die
+// noch NICHT in dieser Gruppe sind). Fahrten aus einer ANDEREN Gruppe zeigen ein Badge - eine Fahrt
+// kann nur in einer Gruppe sein, Auswahl verschiebt sie dorthin statt es stillschweigend zu tun.
+function openGroupPicker(targetGroupId) {
+  groupPickerTargetId = targetGroupId;
+  const isAddMode = targetGroupId != null;
+
+  document.getElementById("trip-group-picker-title").textContent = isAddMode ? "Fahrten hinzufügen" : "Fahrten gruppieren";
+  const nameInput = document.getElementById("trip-group-picker-name");
+  nameInput.classList.toggle("hidden", isAddMode);
+  nameInput.value = "";
+
+  const confirmBtn = document.getElementById("trip-group-picker-confirm-btn");
+  confirmBtn.textContent = isAddMode ? "Hinzufügen" : "Erstellen";
+  confirmBtn.disabled = true;
+
+  const candidateTrips = (isAddMode
+    ? backupData.trips.filter((t) => t.groupId !== targetGroupId)
+    : backupData.trips
+  ).slice().sort((a, b) => b.startTimestamp - a.startTimestamp);
+
+  const listEl = document.getElementById("trip-group-picker-list");
+  listEl.innerHTML = "";
+
+  function updatePickerConfirmState() {
+    const anyChecked = Array.from(listEl.querySelectorAll("input[type=checkbox]")).some((c) => c.checked);
+    confirmBtn.disabled = !anyChecked || (!isAddMode && nameInput.value.trim() === "");
+  }
+  nameInput.oninput = updatePickerConfirmState;
+
+  if (candidateTrips.length === 0) {
+    listEl.innerHTML = `<div class="empty-hint">${isAddMode ? "Alle Fahrten sind bereits in dieser Gruppe." : "Keine Fahrten vorhanden."}</div>`;
+  } else {
+    candidateTrips.forEach((trip) => {
+      const otherGroup = trip.groupId != null && trip.groupId !== targetGroupId
+        ? backupData.groups.find((g) => g.id === trip.groupId)
+        : null;
+
+      const row = document.createElement("label");
+      row.className = "edit-pending-row clickable picker-check-row";
+      row._trip = trip;
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.addEventListener("change", updatePickerConfirmState);
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "name";
+      nameSpan.textContent = trip.name;
+
+      row.appendChild(checkbox);
+      row.appendChild(nameSpan);
+
+      if (otherGroup) {
+        const badge = document.createElement("span");
+        badge.className = "picker-check-badge";
+        badge.textContent = `Wechselt aus „${otherGroup.name}“`;
+        row.appendChild(badge);
+      }
+
+      listEl.appendChild(row);
+    });
+  }
+
+  showScreen("groupPicker");
+}
+
+document.getElementById("group-create-btn").addEventListener("click", () => openGroupPicker(null));
+
+document.getElementById("trip-group-picker-back").addEventListener("click", () => {
+  if (groupPickerTargetId != null) {
+    const group = backupData.groups.find((g) => g.id === groupPickerTargetId);
+    if (group) { showScreen("group"); openTripGroup(group); return; }
+  }
+  showScreen("main");
+  setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+});
+
+document.getElementById("trip-group-picker-confirm-btn").addEventListener("click", async () => {
+  const listEl = document.getElementById("trip-group-picker-list");
+  const selectedTrips = Array.from(listEl.children)
+    .filter((row) => row._trip && row.querySelector("input[type=checkbox]")?.checked)
+    .map((row) => row._trip);
+  if (selectedTrips.length === 0) return;
+
+  const btn = document.getElementById("trip-group-picker-confirm-btn");
+  btn.disabled = true;
+  try {
+    if (groupPickerTargetId == null) {
+      const name = document.getElementById("trip-group-picker-name").value.trim();
+      if (!name) return;
+      const newId = nextLocalId(backupData.groups);
+      backupData.groups.push({ id: newId, name });
+      selectedTrips.forEach((trip) => replaceTripInBackupData(trip, { ...trip, groupId: newId }));
+    } else {
+      selectedTrips.forEach((trip) => replaceTripInBackupData(trip, { ...trip, groupId: groupPickerTargetId }));
+    }
+    await pushBackupConflictSafe();
+
+    if (groupPickerTargetId != null) {
+      const group = backupData.groups.find((g) => g.id === groupPickerTargetId);
+      if (group) { showScreen("group"); openTripGroup(group); }
+    } else {
+      showScreen("main");
+      setTimeout(() => mainMap && mainMap.invalidateSize(), 50);
+    }
+  } catch (e) {
+    alert("Speichern fehlgeschlagen: " + (e.message || e));
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // --- Fahrt bearbeiten (seit v1.7.0) ---
@@ -1959,14 +2628,18 @@ document.getElementById("route-color-mode").addEventListener("change", (e) => {
 // Legende einmalig mit der echten Farbfunktion befüllen, statt die Farben separat in CSS zu
 // duplizieren (garantiert, dass sie exakt zur tatsächlichen Route-Einfärbung passt). Feine
 // 10-km/h-Schritte, damit der Knick bei 130 (rot) glatt in den Verlauf übergeht.
+// Seit v1.9.0 zwei Legenden im DOM (Fahrt-Detail + Gruppen-Route) - beide über dieselbe echte
+// Farbfunktion befüllt, damit sie garantiert identisch mit der jeweiligen Routen-Einfärbung bleiben.
 const legendStops = [];
 for (let v = 0; v <= ROUTE_COLOR_PURPLE_KMH; v += 10) legendStops.push(speedToColor(v));
-document.querySelector(".route-color-legend-bar").style.background =
-  `linear-gradient(to right, ${legendStops.join(", ")})`;
+document.querySelectorAll(".route-color-legend-bar").forEach((el) => {
+  el.style.background = `linear-gradient(to right, ${legendStops.join(", ")})`;
+});
 // "130"-Tick an die tatsächliche Position seines Werts im Gradienten setzen (130/180 ≈ 72%),
 // statt ihn per Flexbox in die Mitte zu zwingen, wo eigentlich eine andere Farbe/Geschwindigkeit sitzt.
-document.getElementById("route-color-legend-mid").style.left =
-  `${(ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH) * 100}%`;
+["route-color-legend-mid", "group-route-color-legend-mid"].forEach((id) => {
+  document.getElementById(id).style.left = `${(ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH) * 100}%`;
+});
 
 // --- Automatische Synchronisation ---
 // Die App synchronisiert seit 0.3.0 selbst automatisch nach jeder Fahrt - hier holen wir uns
@@ -1979,6 +2652,8 @@ const AUTO_REFRESH_INTERVAL_MS = 60_000;
 function canAutoRefreshNow() {
   return Boolean(session && dek) && (screens.detail.classList.contains("hidden")) &&
     (screens.edit.classList.contains("hidden")) &&
+    (screens.group.classList.contains("hidden")) &&
+    (screens.groupPicker.classList.contains("hidden")) &&
     (screens.settings.classList.contains("hidden"));
 }
 

@@ -8,6 +8,27 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.9.0] - 2026-08-09
+
+### Hinzugefügt
+- **Fahrten gruppieren** – 1:1-Port der App-Funktion (Version 0.13.0). "📁+"-Button neben "Letzte
+  Fahrten:" öffnet eine Checkliste zum Erstellen einer neuen Gruppe (Name + Fahrtenauswahl); eine
+  Gruppe erscheint danach als EIN zusammengefasster Eintrag in der Fahrtenliste (kombinierte
+  Mini-Routenkarte statt Einzel-Thumbnail, "📁 Gruppe"-Hinweis unter dem Namen) statt einzeln.
+  - Gruppen-Detailseite: Gesamt-Statistik über alle Mitgliedsfahrten, Liste der einzelnen Fahrten
+    (Klick öffnet die normale Fahrt-Detailseite, "✕" entfernt nur aus der Gruppe, löscht die Fahrt
+    nicht), "Fahrten hinzufügen" (Fahrten aus einer ANDEREN Gruppe zeigen dort ein Badge - Auswahl
+    verschiebt sie, da eine Fahrt nur in einer Gruppe sein kann), "Gruppe löschen" (Mitgliedsfahrten
+    bleiben erhalten). Umbenennen über einen Stift-Button (nutzt `prompt()`, kein eigenes Modal-
+    System in dieser App).
+  - Kombinierte Routenkarte über alle Mitgliedsfahrten (inkl. Umschalter Standard-/
+    Geschwindigkeitsfarbe + Legende, wie bei einer einzelnen Fahrt) und ein kombinierter
+    Geschwindigkeits-Graph darunter. Die Geschwindigkeit wird dabei NIE über die Nahtstelle
+    zwischen zwei Fahrten hinweg berechnet (keine "Teleport"-Ausreißer zwischen dem Ziel der einen
+    und dem Start der nächsten Fahrt).
+- Server-Backup um Gruppen erweitert (additiv, alte Backups ohne Gruppen bleiben importierbar) -
+  synchronisiert sich über alle Geräte wie Fahrten/Autos auch.
+
 ## [1.8.1] - 2026-08-09
 
 ### Behoben

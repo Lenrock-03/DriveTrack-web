@@ -168,6 +168,53 @@ Merge-Push** umgestellt:
   Seiten-Reload hinweg behalten würde – ohne den Push wäre der nächste Reload wieder auf dem alten
   Stand). Pendant zu `BackupExporter.restoreFromJson()`/`ServerBackupScreen.kt`s Versionsverlauf.
 
+## Fahrten gruppieren (seit v1.9.0)
+
+1:1-Port von `data/TripGrouping.kt`/`TripGroupDetailScreen.kt`/`TripGroupPickerScreen.kt`/
+`TripGeoMath.kt::buildGroupSpeedSeries()`/`GroupRouteMap.kt` der App (Version 0.13.0). `backupData`
+bekommt ein zusätzliches `groups`-Array (`{id, name}`), Trips ein zusätzliches `groupId` (nullable,
+serialisiert/gemergt wie `carId` - `mergeBackupDataOverwrite()` bekam dafür eine `groupIdMap` nach
+demselben Muster wie die bestehende `carIdMap`).
+
+- `buildTripListEntries(trips, groups)`/`computeGroupStats(trips)`: baut aus Fahrten + Gruppen eine
+  gemischte, nach der jeweils neuesten Fahrt sortierte Liste für `renderTripList()` - eine Gruppe
+  erscheint dort als EIN zusammengefasster Eintrag (kombiniertes Mini-Thumbnail über
+  `drawGroupRouteThumbnail()`, spiegelt `drawRouteThumbnail()` nur mit einem eigenen,
+  unverbundenen Canvas-Pfad je Fahrt statt einem durchgehenden - sonst würde eine gerade
+  "Teleport"-Linie zwischen dem Ziel einer Fahrt und dem Start der nächsten gezeichnet).
+  `computeGroupStats()` nutzt bewusst dieselbe Formel wie `List<Trip>.groupStats()` in der App
+  (inkl. `pausedMinutes`-Abzug für die Fahrzeit über `tripDrivingMinutes()`) - `renderStats()`
+  weiter oben ist davon unberührt, rechnet weiterhin ohne `pausedMinutes`-Abzug (noch nicht
+  umgestellter, älterer Code, kein Bug dieser Funktion).
+- `#trip-group-screen` (`openTripGroup()`): Statistik-Kacheln, Mitgliedsfahrten-Liste ("✕"-Button
+  entfernt nur aus der Gruppe, löscht die Fahrt nie - setzt nur `groupId = null` via
+  `replaceTripInBackupData()`), "Fahrten hinzufügen" (öffnet `#trip-group-picker-screen` im
+  Hinzufügen-Modus), "Gruppe löschen" (setzt `groupId` aller Mitglieder zurück, bevor die Gruppe
+  selbst aus `backupData.groups` entfernt wird). Umbenennen über einen eigenen Stift-Button +
+  `prompt()` (kein eigenes Modal-System in dieser App, siehe "Fahrten bearbeiten" oben) - bewusst
+  NICHT inline im Screen, wie es die App zunächst hatte, bevor sie ebenfalls auf einen Dialog
+  umgestellt wurde.
+  - Eigene Leaflet-Karte (`groupMap`, `#trip-group-map`) mit den Routen ALLER Mitgliedsfahrten
+    (`renderGroupRouteLine()`) inkl. Standard-/Geschwindigkeitsfarb-Umschalter (`#group-route-color-
+    mode`, teilt sich den `ROUTE_COLOR_MODE_KEY`-localStorage-Eintrag mit der Einzelfahrt-Ansicht)
+    und eigener Legende (`#group-route-color-legend`) - die Farbe pro Fahrt kommt dabei aus deren
+    EIGENER `getTripSpeedSeries()`, nicht aus der kombinierten Graph-Serie (die Nahtstellen-
+    Problematik unten betrifft nur den Graphen, nicht die Kartenfarbe pro Punkt).
+  - Eigener kombinierter Geschwindigkeits-Graph (`renderGroupSpeedGraph()`, `#group-graph-canvas`)
+    - bewusst ein eigenständiger Klon von `renderSpeedGraph()` statt Wiederverwendung (dieselbe
+      Begründung wie bei `renderEditGraph()`: fest an eigene DOM-Elemente/Karte gebunden).
+      `buildGroupSpeedSeries()`/`getGroupSpeedSeries()` reihen die Fahrten chronologisch aneinander
+      (`offsetSeconds`/`cumulativeKm` laufen durchgehend weiter, keine echte Kalenderzeit-Lücke im
+      Graphen), berechnen die Geschwindigkeit dabei aber NIE über die Nahtstelle zwischen zwei
+      Fahrten hinweg (jede Fahrt läuft als eigene, isolierte Punktreihe durch `buildSpeedSeries()`) -
+      sonst würde die Luftlinien-"Geschwindigkeit" zwischen dem Ziel einer Fahrt und dem Start der
+      nächsten (oft über Tage hinweg) als astronomischer Ausreißer erscheinen.
+- `#trip-group-picker-screen` (`openGroupPicker()`): `targetGroupId == null` → Erstellen-Modus
+  (Namensfeld + Checkliste aller Fahrten), sonst Hinzufügen-Modus (kein Namensfeld, Checkliste aller
+  Fahrten, die noch NICHT in dieser Gruppe sind). Da eine Fahrt nur in EINER Gruppe sein kann
+  (spiegelt `carId`), zeigen Fahrten aus einer ANDEREN Gruppe ein `.picker-check-badge` - Auswahl
+  verschiebt sie dorthin, statt es stillschweigend passieren zu lassen.
+
 ## Versionierung
 
 Seit 2026-08-05 einheitlich über alle drei Projekte (App, Backend, Web):

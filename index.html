@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="app-version" content="1.8.1" />
+<meta name="app-version" content="1.9.0" />
 <title>DriveTrack</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -101,7 +101,10 @@
     <div class="layout">
       <aside class="sidebar">
         <div id="stats-panel" class="stats-panel"></div>
-        <div class="sidebar-header">Letzte Fahrten:</div>
+        <div class="sidebar-header-row">
+          <div class="sidebar-header">Letzte Fahrten:</div>
+          <button id="group-create-btn" class="group-create-btn" title="Fahrten gruppieren">📁+</button>
+        </div>
         <div id="trip-list" class="trip-list"></div>
       </aside>
 
@@ -191,6 +194,60 @@
 
       <button id="edit-mark-segment-btn" class="secondary-btn full-width" disabled>A–B als Abschnitt markieren…</button>
       <div id="edit-segment-list" class="segment-list hidden"></div>
+    </div>
+  </div>
+
+  <!-- Fahrten-Gruppe (seit v1.9.0) -->
+  <div id="trip-group-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="trip-group-back">&larr; Zurück</button>
+    <button class="edit-btn" id="trip-group-rename-btn">Umbenennen</button>
+    <div class="detail-info">
+      <h2 id="trip-group-title"></h2>
+      <div class="detail-stats" id="trip-group-stats"></div>
+    </div>
+    <div class="detail-map-wrap">
+      <div id="trip-group-map"></div>
+      <div class="route-color-selector">
+        <select id="group-route-color-mode">
+          <option value="standard">Standard</option>
+          <option value="speed">Nach Geschwindigkeit</option>
+        </select>
+      </div>
+      <div id="group-route-color-legend" class="route-color-legend hidden">
+        <div class="route-color-legend-bar"></div>
+        <div class="route-color-legend-labels">
+          <span class="legend-tick legend-tick-start">0</span>
+          <span class="legend-tick legend-tick-mid" id="group-route-color-legend-mid">130</span>
+          <span class="legend-tick legend-tick-end">180+</span>
+        </div>
+      </div>
+    </div>
+    <div class="graph-section">
+      <div class="graph-header">
+        <span class="graph-header-label">Geschwindigkeit (kombiniert)</span>
+      </div>
+      <div class="graph-body">
+        <div id="group-graph-info-chip" class="graph-info-chip hidden"></div>
+        <div id="group-graph-empty-hint" class="graph-empty-hint hidden">Keine Geschwindigkeitsdaten vorhanden.</div>
+        <canvas id="group-graph-canvas"></canvas>
+      </div>
+    </div>
+    <div class="edit-content">
+      <div class="edit-section-label">Fahrten in dieser Gruppe</div>
+      <div id="trip-group-members" class="trip-list"></div>
+      <button id="group-add-trips-btn" class="secondary-btn full-width">Fahrten hinzufügen</button>
+      <button id="group-delete-btn" class="danger-btn">Gruppe löschen</button>
+    </div>
+  </div>
+
+  <!-- Fahrten gruppieren / hinzufügen (seit v1.9.0) -->
+  <div id="trip-group-picker-screen" class="overlay-screen hidden">
+    <button class="back-btn" id="trip-group-picker-back">&larr; Zurück</button>
+    <div class="edit-content">
+      <h2 id="trip-group-picker-title">Fahrten gruppieren</h2>
+      <input id="trip-group-picker-name" placeholder="Gruppenname" />
+      <div id="trip-group-picker-list" class="edit-pending-list"></div>
+      <button id="trip-group-picker-confirm-btn" class="primary-btn" disabled>Erstellen</button>
     </div>
   </div>
 
