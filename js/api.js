@@ -25,12 +25,8 @@ export const api = {
   requestReset: (email) => request("/request-reset", "POST", { email }),
   verifyResetCode: (email, code) => request("/verify-reset-code", "POST", { email, code }),
   confirmReset: (data) => request("/confirm-reset", "POST", data),
+  // Seit v2.0.0 der einzige Backup-Endpunkt, den diese Seite noch aufruft (reiner Lesepfad, kein
+  // uploadBackup/getBackupHistory/getBackupVersion mehr - die Web-App spiegelt nur noch, was die
+  // App hochgeladen hat, siehe CLAUDE.md).
   downloadBackup: (token) => request("/backup", "GET", null, token),
-  // Seit v1.7.0: erster Schreibpfad der Web-App (war bisher bewusst rein lesend, siehe CLAUDE.md) -
-  // mirrors ServerApi.kt (uploadBackup/backupHistory/downloadBackupVersion) in der Android-App 1:1.
-  uploadBackup: (token, ciphertext, iv) => request("/backup", "POST", { ciphertext, iv }, token),
-  // Liefert ein rohes JSON-*Array* (kein Objekt) - JSON.parse() oben handhabt das problemlos,
-  // anders als der Kotlin-Client (org.json.JSONObject), wo das erst ein Bug war (siehe App-CLAUDE.md).
-  getBackupHistory: (token) => request("/backup/history", "GET", null, token),
-  getBackupVersion: (token, id) => request(`/backup/${id}`, "GET", null, token),
 };

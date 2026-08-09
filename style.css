@@ -215,25 +215,6 @@ input:focus {
   font-size: 1rem;
 }
 
-/* "+ Gruppe"-Button neben "Letzte Fahrten:" (seit v1.9.0, spiegelt den Ordner-Button in HomeScreen.kt) */
-.group-create-btn {
-  background: var(--surface-variant);
-  border: 1px solid var(--border);
-  color: var(--text);
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.group-create-btn:hover {
-  border-color: var(--primary);
-}
-
 /* Kleiner Hinweis unter dem Namen einer Gruppen-Zeile in der Fahrtenliste (spiegelt .trip-label-badge
    optisch, eigene Klasse da inhaltlich kein Label sondern "das ist eine Gruppe"). */
 .trip-row-group-badge {
@@ -353,23 +334,6 @@ input:focus {
   filter: brightness(1.08);
 }
 
-.edit-btn {
-  position: absolute;
-  top: 14px;
-  right: 20px;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  z-index: 1;
-}
-.edit-btn:hover {
-  border-color: var(--primary);
-}
-
 .detail-info {
   padding: 0 20px 16px 20px;
   position: relative;
@@ -447,20 +411,6 @@ input:focus {
   color: var(--text-muted);
   margin-top: 2px;
 }
-.segment-delete-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 4px 6px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.segment-delete-btn:hover {
-  color: var(--error);
-}
-
 .detail-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -750,7 +700,7 @@ input:focus {
   padding: 6px 0;
 }
 
-/* --- Fahrt bearbeiten (seit v1.7.0) --- */
+/* Layout-Rahmen für Screens ohne eigene Karte (seit v1.9.0: nur noch die Gruppen-Detailseite) */
 .edit-content {
   width: 100%;
   max-width: 640px;
@@ -760,188 +710,9 @@ input:focus {
   flex-direction: column;
   gap: 10px;
 }
-.edit-content h2 {
-  margin: 0 0 4px 0;
-}
 .edit-section-label {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--primary);
   margin: 14px 0 0 0;
-}
-.edit-hint {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.chip {
-  background: var(--surface-variant);
-  color: var(--text-muted);
-  border: none;
-  border-radius: 16px;
-  padding: 8px 14px;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.chip.selected {
-  background: var(--primary);
-  color: var(--on-primary);
-  font-weight: 600;
-}
-
-.edit-map-wrap {
-  position: relative;
-  height: 220px;
-  border-radius: 16px;
-  overflow: hidden;
-}
-#trip-edit-map {
-  width: 100%;
-  height: 100%;
-  background: var(--surface);
-  filter: contrast(1.15) brightness(1.65) saturate(1.15);
-}
-
-.edit-graph-wrap {
-  position: relative;
-  height: 160px;
-}
-#edit-graph-canvas {
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-  cursor: pointer;
-}
-
-.edit-mark-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
-.edit-btn-row {
-  display: flex;
-  gap: 10px;
-}
-
-.secondary-btn {
-  flex: 1;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 11px 14px;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-.secondary-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-}
-.secondary-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-.secondary-btn.full-width {
-  flex: none;
-  width: 100%;
-}
-
-.danger-btn {
-  width: 100%;
-  background: var(--error);
-  color: #1a1a1a;
-  border: none;
-  padding: 12px 16px;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-.edit-pending-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.edit-pending-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  background: var(--surface-variant);
-  border-radius: 12px;
-  padding: 8px 12px;
-  font-size: 0.82rem;
-}
-.edit-pending-row button {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 2px 6px;
-  line-height: 1;
-}
-.edit-pending-row button:hover {
-  color: var(--error);
-}
-.edit-pending-row.clickable {
-  cursor: pointer;
-}
-.edit-pending-row.clickable:hover {
-  border: 1px solid var(--primary);
-}
-
-/* Checkliste im Gruppen-Picker (seit v1.9.0) - wiederverwendet .edit-pending-row als Zeile */
-.picker-check-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-.picker-check-row input[type="checkbox"] {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--primary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.picker-check-row .name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.picker-check-badge {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  background: var(--surface);
-  border-radius: 8px;
-  padding: 2px 7px;
-  flex-shrink: 0;
-}
-
-/* Mitgliedsfahrt in der Gruppen-Detailseite: .trip-row + kleiner "Entfernen"-Button rechts */
-.trip-row-remove-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 4px 6px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.trip-row-remove-btn:hover {
-  color: var(--error);
 }

@@ -2,9 +2,22 @@
 
 Statische Web-Oberfläche (reines HTML/CSS/JavaScript, **kein Build-Step**, kein Framework) für
 DriveTrack. Läuft live auf `https://drivetrack.kornel-riedl.de`. Zeigt an, was die Android-App per
-Server-Backup hochgeladen hat (kein GPS im Browser, also kein Aufzeichnen hier). Bis v1.6.0 bewusst
-rein lesend – seit **v1.7.0** kann hier auch bearbeitet werden (Zuschneiden/Markieren, siehe unten),
-der erste Schreibpfad der Web-App überhaupt. Weiterhin **kein** GPS-Tracking im Browser.
+Server-Backup hochgeladen hat (kein GPS im Browser, also kein Aufzeichnen hier). Kein GPS-Tracking
+im Browser.
+
+**Seit v2.0.0 bewusst wieder rein lesend** ("reiner Spiegel" der App): v1.7.0–v1.10.x hatten hier
+einen eigenen Schreibpfad (Zuschneiden/Markieren, Gruppen anlegen/umbenennen/löschen,
+Versionsverlauf-Wiederherstellung), der über `pushBackupConflictSafe()`/`mergeBackupDataOverwrite()`
+konfliktsicher mit der App synchronisiert werden sollte. In der Praxis führte das trotzdem zu
+Daten-Bugs, weil Fahrten kein stabiles Identitäts-Feld im Backup-JSON haben (Abgleich nur über
+Start-/Endzeitpunkt) - ein Zuschneiden auf dem Handy änderte diese Zeitstempel, wodurch die Web-Seite
+(oder ein anderes Gerät) die bearbeitete Fahrt beim nächsten Sync als NEU statt als Update erkannte
+und die alte Kopie als Karteileiche stehen blieb (Duplikate), teils sogar mit einer über den Merge
+verschleppten, aus korrupten GPS-Punkten stammenden falschen Höchstgeschwindigkeit. Statt die
+Merge-Logik weiter zu härten, wurde die Ursache stattdessen strukturell entfernt: **die App ist die
+einzige Quelle der Wahrheit**, hier wird nur noch angezeigt (`loadAndRenderBackup()` lädt einmalig
+das aktuelle Server-Backup und ERSETZT `backupData` komplett - kein Merge mehr nötig, weil nie mehr
+lokal mutiert wird). Bearbeiten/Gruppieren/Umbenennen/Löschen gibt es dadurch nur noch in der App.
 
 ## Zugehörige Projekte
 
@@ -25,13 +38,13 @@ index.html          Alle Screens als einzelne divs (login/register/forgot/unlock
                      per JS ein-/ausgeblendet über die Klasse "hidden"
 style.css            Dunkles Theme, orange Akzentfarbe (#ff7a1a) – an die Android-App angelehnt
 js/crypto.js         PBKDF2 + AES-256-GCM über die Web Crypto API, spiegelt ServerCrypto.kt 1:1
-js/api.js            Fetch-Wrapper für die Backend-Endpunkte (inkl. uploadBackup/getBackupHistory/
-                     getBackupVersion seit v1.7.0, siehe unten)
+js/api.js            Fetch-Wrapper für die Backend-Endpunkte - seit v2.0.0 nur noch
+                     `downloadBackup()` (kein Schreibpfad mehr, siehe oben)
 js/app.js            Komplette UI-Logik, State, Leaflet-Karten-Rendering, Geschwindigkeits-Graph
                      (Canvas, `buildSpeedSeries()`/`renderSpeedGraph()` – spiegelt `SpeedGraph()`
-                     aus `TripDetailScreen.kt` der App 1:1, gleiche Haversine-Formel), seit v1.7.0
-                     zusätzlich der komplette Bearbeiten-Screen (`openTripEdit()` und alles was mit
-                     `edit`-Präfix beginnt) + der Schreibpfad (`pushBackupConflictSafe()`)
+                     aus `TripDetailScreen.kt` der App 1:1, gleiche Haversine-Formel). Seit v2.0.0
+                     kein Schreibpfad mehr (reiner Spiegel, siehe oben) - `js/api.js` hat dafür nur
+                     noch `downloadBackup()`
 ```
 
 Karten: **Leaflet.js** (über CDN eingebunden) statt osmdroid, gleiche CartoDB-Dark-Matter-Kacheln wie
@@ -101,80 +114,28 @@ Reload mitten in einer Interaktion die Ansicht wegreißt.
 
 Seit v1.8.0 zusätzlich manuell per **"🔄 Aktualisieren"-Button** in der Kopfzeile (`#refresh-btn`,
 ruft direkt `loadAndRenderBackup()` auf) – Pendant zum Runterziehen-Gesture auf der Fahrtenliste
-der Android-App (0.12.0). Rein lesend (pullt nur); lokale Bearbeitungen werden bereits beim
-Speichern selbst gepusht (`pushBackupConflictSafe()`), kein zusätzlicher Push hier nötig.
+der Android-App (0.12.0). Seit v2.0.0 ist das (neben dem 60s-Intervall) die einzige Art, wie diese
+Seite überhaupt mit dem Server interagiert – reines Pull, kein Push mehr (siehe oben).
 
-## Fahrten bearbeiten + Abschnitte ansehen (seit v1.7.0)
+## Fahrt-Detail: Labels + markierte Abschnitte ansehen (seit v1.7.0)
 
-1:1-Port der Android-App-Funktionen aus 0.8.0–0.11.0 (`data/TripGeoMath.kt`/`TripEditScreen.kt`).
+Rein lesend, 1:1-Port der Anzeige-Funktionen aus `data/TripGeoMath.kt` der App (Bearbeiten selbst
+gibt es seit v2.0.0 nur noch dort, siehe oben - `#trip-detail-segments` etc. zeigen nur an, was die
+App in `labels`/`segmentMarksJson` abgelegt hat). `openTripDetail()` zeigt Fahrt-Labels
+(`labelList()`/`labelIcon()`/`labelColor()` – Fähre blau/Pause bernstein/Nacht indigo/sonst türkis,
+exakt dieselben Hex-Werte wie `labelColor()` in `data/TripGeoMath.kt`) als Badges, `renderRouteLine()`
+zeichnet zusätzlich je markiertem Abschnitt eine gestrichelte `L.polyline` in dessen Farbe
+(`renderSegmentMarkLines()`), `#trip-detail-segments` listet pro Abschnitt eine eigene Distanz/Dauer/
+Ø-/Höchstgeschwindigkeit (`computeSegmentStats()`, spiegelt `Trip.segmentStats()`) – unabhängig von
+den Gesamt-Fahrt-Werten.
 
-- **Ansehen** (rein lesend, unabhängig vom Bearbeiten-Feature): `openTripDetail()` zeigt Fahrt-
-  Labels (`labelList()`/`labelIcon()`/`labelColor()` – Fähre blau/Pause bernstein/Nacht indigo/
-  sonst türkis, exakt dieselben Hex-Werte wie `labelColor()` in `data/TripGeoMath.kt`) als Badges,
-  `renderRouteLine()` zeichnet zusätzlich je markiertem Abschnitt eine gestrichelte `L.polyline` in
-  dessen Farbe (`renderSegmentMarkLines()`), `#trip-detail-segments` listet pro Abschnitt eine
-  eigene Distanz/Dauer/Ø-/Höchstgeschwindigkeit (`computeSegmentStats()`, spiegelt
-  `Trip.segmentStats()`) – unabhängig von den Gesamt-Fahrt-Werten.
-- **Bearbeiten** (`#trip-edit-screen`, `openTripEdit()`): eigene, vom Detail-Screen unabhängige
-  Leaflet-Karte (`editMap`) + ein eigenständiger Canvas-Graph (`renderEditGraph()` – bewusst NICHT
-  `renderSpeedGraph()` wiederverwendet, das ist fest an `detailMap`/`#speed-graph-canvas` gebunden;
-  stattdessen ein eigener, schlankerer Klon mit zusätzlichen A/B-Markern + hervorgehobenen
-  Bereichen). Tippen/Ziehen im Graph wählt eine Position, "Punkt A/B setzen" merkt sich deren
-  Zeitstempel. Zwei Kategorien:
-  - **Zuschneiden** (destruktiv): `applyTripEditPlanJs()` ist der JS-Port von
-    `applyTripEditPlan()` – identische Lauf-Gruppierung nach Original-Index-Nachbarschaft (gegen
-    Distanz-Artefakte über Schnittlücken), `pausedMinutes` akkumuliert, Gesamtdauer bleibt bei
-    einem Pause-Cut unverändert. Änderungen sammeln sich erst in `editPendingActions`
-    (Änderungsliste + Lösch-Icon), werden erst nach `confirm()` (kein eigenes Modal-System in
-    dieser App, siehe unten) tatsächlich angewendet.
-  - **Markieren** (nicht-destruktiv): Labels/Markierungen sind bis zum Verlassen der Seite nur
-    lokaler Entwurf (`editPendingLabels`/`editPendingMarks`), NICHT sofort gespeichert.
-    `attemptEditBack()` fragt bei ungespeicherten Änderungen nach ("Änderungen speichern?") –
-    bewusst `confirm()` statt eines dritten "Bleiben"-Buttons (OK = Speichern, Abbrechen =
-    Verwerfen), da diese App kein Custom-Modal-System hat und `alert()`/`confirm()`/`prompt()` an
-    anderen Stellen (Registrieren, Passwort-Reset) bereits akzeptierter Stil sind. Aus demselben
-    Grund nutzt "A–B als Abschnitt markieren…" einen `prompt()` statt eines Chip-Auswahl-Dialogs
-    wie in der App.
-  - Nach dem Speichern: `pushBackupConflictSafe()` (siehe unten), dann direkt zurück zur jetzt
-    aktualisierten Detailseite (`openTripDetail(updatedTrip)`).
+## Fahrten gruppieren (seit v1.9.0, seit v2.0.0 nur noch Ansicht)
 
-## Konfliktsicherer Schreibpfad + Versionsverlauf (seit v1.7.0)
-
-Die Web-App war bis v1.6.0 rein lesend – `syncFullBackupIfPossible()` in der App ist aber ein reiner
-Push ohne Konfliktprüfung, hätte also jede Web-Bearbeitung beim nächsten App-Sync stillschweigend
-überschrieben. Beide Seiten (App 0.11.0, hier v1.7.0) wurden deshalb gemeinsam auf **Pull-Check-
-Merge-Push** umgestellt:
-
-- `pushBackupConflictSafe()` in `js/app.js`: lädt vor jedem Push erst `GET /api/backup` (liefert
-  auch dessen `id`), vergleicht sie mit der zuletzt bekannten (`localStorage`-Key
-  `drivetrack_last_known_backup_id`, Pendant zu `ServerAuthPreferences.getLastKnownBackupId()` in
-  der App). Weicht sie ab (die App hat inzwischen gepusht), wird diese Version in `backupData`
-  übernommen (`mergeBackupDataOverwrite()` – Trips über Start-/Endzeitpunkt, Users/Cars über Namen
-  abgeglichen; ÜBERSCHREIBT bekannte Fahrten mit dem neueren Stand statt sie als Duplikat zu
-  überspringen, seit v1.8.1 – siehe unten "Versionsverlauf": beide teilen sich dieselbe Funktion),
-  bevor der eigentliche Push passiert. Anders als die App (die Fehler still verschluckt) wirft
-  diese Funktion bei einem Fehler – ein vom Nutzer ausgelöstes Speichern soll sichtbar
-  fehlschlagen können. **v1.8.1-Fix**: hieß vorher `mergeBackupDataAdditive()` und war rein
-  additiv (nie überschrieben) – das ließ Bearbeitungen an einer bereits bekannten Fahrt (z. B. ein
-  auf dem Handy geändertes Label) beim Web-seitigen Speichern einfach verschwinden, weil "gleicher
-  Start-/Endzeitpunkt" als Duplikat übersprungen wurde.
-- **Versionsverlauf** (Einstellungen → "Versionsverlauf anzeigen"): `api.getBackupHistory()` +
-  `api.getBackupVersion()` (Backend speichert jede gepushte Version für immer, `POST /api/backup`
-  überschreibt nie – reines Append). Antippen einer Version ruft `restoreFromJsonWeb()` auf – anders
-  als der additive Merge werden dabei bestehende Fahrten mit übereinstimmender Start-/Endzeit
-  gezielt auf den gewählten (älteren) Stand ZURÜCKGESETZT statt übersprungen, danach sofort
-  `pushBackupConflictSafe()`, damit die Wiederherstellung auch tatsächlich persistiert wird (die
-  Web-App hat anders als die App keine lokale DB, die den wiederhergestellten Stand über einen
-  Seiten-Reload hinweg behalten würde – ohne den Push wäre der nächste Reload wieder auf dem alten
-  Stand). Pendant zu `BackupExporter.restoreFromJson()`/`ServerBackupScreen.kt`s Versionsverlauf.
-
-## Fahrten gruppieren (seit v1.9.0)
-
-1:1-Port von `data/TripGrouping.kt`/`TripGroupDetailScreen.kt`/`TripGroupPickerScreen.kt`/
-`TripGeoMath.kt::buildGroupSpeedSeries()`/`GroupRouteMap.kt` der App (Version 0.13.0). `backupData`
-bekommt ein zusätzliches `groups`-Array (`{id, name}`), Trips ein zusätzliches `groupId` (nullable,
-serialisiert/gemergt wie `carId` - `mergeBackupDataOverwrite()` bekam dafür eine `groupIdMap` nach
-demselben Muster wie die bestehende `carIdMap`).
+1:1-Port der Anzeige-Seite von `data/TripGrouping.kt`/`TripGroupDetailScreen.kt`/
+`TripGeoMath.kt::buildGroupSpeedSeries()`/`GroupRouteMap.kt` der App. Gruppen anlegen/umbenennen/
+löschen sowie Fahrten hinzufügen/entfernen geht seit v2.0.0 nur noch in der App (`TripGroupPickerScreen.kt`)
+– hier nur noch Ansicht. `backupData` hat weiterhin ein `groups`-Array (`{id, name}`), Trips ein
+`groupId` (nullable, spiegelt `carId`), beides kommt unverändert aus dem Server-Backup.
 
 - `buildTripListEntries(trips, groups)`/`computeGroupStats(trips)`: baut aus Fahrten + Gruppen eine
   gemischte, nach der jeweils neuesten Fahrt sortierte Liste für `renderTripList()` - eine Gruppe
@@ -192,13 +153,9 @@ demselben Muster wie die bestehende `carIdMap`).
   CSS, damit sie nicht mit dem Scrollen der Seite kollidiert; seit v1.10.0 KEIN reiner Canvas-Pfad
   mehr, spiegelt jetzt `GroupRouteMap(interactive=false)` der App statt nur `drawRouteThumbnail()`
   zu erweitern), ein Vergrößerungs-Icon darauf öffnet `#trip-group-route-screen` (siehe unten),
-  Mitgliedsfahrten-Liste ("✕"-Button entfernt nur aus der Gruppe, löscht die Fahrt nie - setzt nur
-  `groupId = null` via `replaceTripInBackupData()`), "Fahrten hinzufügen" (öffnet
-  `#trip-group-picker-screen` im Hinzufügen-Modus), "Gruppe löschen" (setzt `groupId` aller
-  Mitglieder zurück, bevor die Gruppe selbst aus `backupData.groups` entfernt wird). Umbenennen über
-  einen eigenen Stift-Button + `prompt()` (kein eigenes Modal-System in dieser App, siehe "Fahrten
-  bearbeiten" oben) - bewusst NICHT inline im Screen, wie es die App zunächst hatte, bevor sie
-  ebenfalls auf einen Dialog umgestellt wurde.
+  darunter nur noch die Mitgliedsfahrten-Liste (Tap öffnet die normale Fahrt-Detailseite) - seit
+  v2.0.0 kein Umbenennen-/Löschen-Button und kein "✕" zum Entfernen mehr, das geht nur noch in der
+  App.
 - `#trip-group-route-screen` (`renderTripGroupRouteScreen()`) - eigener Screen NUR für die
   interaktive Vollbild-Karte + den Graphen, erreichbar über das Vergrößerungs-Icon oben (ursprünglich
   in v1.9.0 Teil von `#trip-group-screen` selbst, in v1.9.1 ausgelagert: zusammen mit der
@@ -224,11 +181,6 @@ demselben Muster wie die bestehende `carIdMap`).
       OHNE `min-height: 0` bekommt es eine automatische Mindesthöhe aus Breite/Seitenverhältnis,
       unter die `flex-shrink` nicht schrumpfen darf. Betraf `#speed-graph-canvas` genauso wie
       `#group-graph-canvas` (beide über dieselbe CSS-Regel behoben).
-- `#trip-group-picker-screen` (`renderGroupPickerScreen()`): `targetGroupId == null` → Erstellen-
-  Modus (Namensfeld + Checkliste aller Fahrten), sonst Hinzufügen-Modus (kein Namensfeld, Checkliste
-  aller Fahrten, die noch NICHT in dieser Gruppe sind). Da eine Fahrt nur in EINER Gruppe sein kann
-  (spiegelt `carId`), zeigen Fahrten aus einer ANDEREN Gruppe ein `.picker-check-badge` - Auswahl
-  verschiebt sie dorthin, statt es stillschweigend passieren zu lassen.
 
 ## Echte Zurück-Navigation (seit v1.10.0)
 
@@ -248,14 +200,8 @@ oberste Stack-Position, ohne einen neuen History-Eintrag zu erzeugen. Alle "Zur�
 seitdem einheitlich `history.back()` auf (nicht mehr direkt `showScreen(...)`), damit Button-Klick
 und echte Browser-Zurück-Taste garantiert denselben Weg nehmen.
 
-**Sonderfall Bearbeiten-Screen**: `attemptEditBack()` kann die Navigation bei ungespeicherten
-Änderungen abbrechen (Rückfrage-Dialog). Da diese Funktion nur über `popstate` erreicht wird, hat
-der Browser die Zurück-Taste zu diesem Zeitpunkt aber schon "ausgeführt" (History-Position bereits
-verschoben) - bricht der Nutzer ab, wird der History-Eintrag künstlich per `history.pushState()`
-wiederhergestellt, sonst bräuchte ein zweiter Zurück-Versuch nur noch einen Klick.
-`editBackAlreadyDecided` verhindert, dass der generische `popstate`-Handler `attemptEditBack()`
-ERNEUT aufruft, wenn der Bearbeiten-Screen selbst (z.B. nach erfolgreichem "Änderungen anwenden")
-programmatisch `history.back()` auslöst - die Entscheidung "verlassen" ist dort bereits gefallen.
+(Der Bearbeiten-Screen hatte hier bis v1.10.x einen Sonderfall für die "ungespeicherte Änderungen"-
+Rückfrage beim Verlassen - mit dem Bearbeiten-Screen selbst in v2.0.0 entfernt, siehe oben.)
 
 ## Versionierung
 
@@ -265,7 +211,9 @@ Seit 2026-08-05 einheitlich über alle drei Projekte (App, Backend, Web):
   die einzige Quelle der Wahrheit (kein Build-Step, der eine Konstante automatisch einsetzen könnte),
   `js/app.js` liest sie von dort und zeigt sie unter "Konto / Settings" an
 - **MAJOR**: Breaking Change am Backup-JSON-Format/Verschlüsselungsschema (betrifft dann zwangsläufig
-  auch App + Backend)
+  auch App + Backend) - **oder** eine ebenso grundlegende Verhaltensänderung dieser Seite selbst
+  (Ausnahme bisher nur v2.0.0: Entfernung des kompletten Schreibpfads, siehe oben - kein
+  Formatbruch, aber für den Nutzer sichtbar mehrere Features weg)
 - **MINOR**: neues Feature, abwärtskompatibel
 - **PATCH**: Bugfix, kein Verhaltensunterschied
 - Bei jedem Bump: **beide** Stellen ändern (Meta-Tag UND `CHANGELOG.md`), Git-Tag `vX.Y.Z` setzen,

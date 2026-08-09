@@ -8,6 +8,37 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.0.0] - 2026-08-09
+
+### Geändert (Breaking)
+- **Web-App ist wieder rein lesend ("reiner Spiegel" der App)**: Bearbeiten (Zuschneiden/Markieren),
+  Gruppen anlegen/umbenennen/löschen/Fahrten zuordnen und der Versionsverlauf-Wiederherstellen-Hebel
+  sind hier entfernt - all das geht nur noch in der Android-App. Grund: Fahrten haben kein stabiles
+  Identitäts-Feld im Backup-JSON (Abgleich nur über Start-/Endzeitpunkt) - ein Zuschneiden auf dem
+  Handy änderte diese Zeitstempel, wodurch ein anderes Gerät die bearbeitete Fahrt beim nächsten
+  Sync als NEU statt als Update erkannte und die alte Kopie als Duplikat stehen blieb, teils sogar
+  mit einer aus korrupten GPS-Punkten stammenden falschen Höchstgeschwindigkeit. Die App ist jetzt
+  die einzige Quelle der Wahrheit; `loadAndRenderBackup()` ersetzt `backupData` bei jedem Laden
+  komplett statt sie zu mergen. Entfernt: `pushBackupConflictSafe()`, `mergeBackupDataOverwrite()`,
+  der komplette Bearbeiten-Screen, der Gruppen-Picker-Screen, Gruppen-Umbenennen/-Löschen/-Mitglied-
+  entfernen sowie `api.uploadBackup()`/`getBackupHistory()`/`getBackupVersion()`. Die
+  Höchstgeschwindigkeits-Berechnung (betroffen vom 260-km/h-Bug in [1.10.2]) lebt dadurch nur noch
+  in der App - ein entsprechender Fix dort steht noch aus.
+
+## [1.10.2] - 2026-08-09
+
+### Behoben
+- **Unrealistische Höchstgeschwindigkeit (bis zu 260 km/h) nach mehrfacher Bearbeitung derselben
+  Fahrt**: Wird eine Strecke/Pause aus der Mitte einer Fahrt herausgeschnitten, werden die
+  betroffenen GPS-Punkte endgültig entfernt - die beiden jetzt direkt benachbarten Punkte im
+  gespeicherten Track haben dadurch eine reale, oft mehrminütige Zeitlücke zwischen sich. Bisher
+  wurde diese Lücke bei einer SPÄTEREN Bearbeitung derselben Fahrt (auch bei einer reinen Label-
+  Änderung, die nur die Statistik neu berechnet) nicht erkannt - Distanz/Geschwindigkeit wurden über
+  die Nahtstelle hinweg berechnet, was bis zum 260-km/h-Sicherheitslimit hochschlagen konnte.
+  Betrifft `recomputeMaxSpeedExcludingMarks()`, `applyTripEditPlanJs()` und den
+  Geschwindigkeits-Graphen (`buildSpeedSeries()`) - alle drei erkennen jetzt Zeitlücken über
+  `MAX_PLAUSIBLE_GPS_GAP_MS` (5 Minuten) und berechnen nichts mehr darüber hinweg.
+
 ## [1.10.1] - 2026-08-09
 
 ### Geändert
