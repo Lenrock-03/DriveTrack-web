@@ -8,6 +8,17 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.9.1] - 2026-08-09
+
+### Behoben
+- **Gruppen-Detailseite zeigte fälschlich die volle interaktive Karte + den kombinierten
+  Geschwindigkeits-Graph direkt in der normalen Ansicht** statt wie in der App nur eine kleine,
+  statische Vorschau. Zusammen mit der Mitgliedsfahrten-Liste sprengte das die Höhe eines
+  Viewports, wodurch der Karten-Container (`flex: 1`, einziges Element mit `min-height: 0`) auf
+  0px zusammengedrückt wurde - die Karte war dadurch komplett unsichtbar. Jetzt eine statische
+  Canvas-Vorschau mit Vergrößerungs-Icon, das Karte + Graph in einem eigenen Screen öffnet -
+  spiegelt jetzt korrekt `TripGroupDetailScreen.kt`/`TripGroupRouteScreen.kt` der App.
+
 ## [1.9.0] - 2026-08-09
 
 ### Hinzugefügt
