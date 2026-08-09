@@ -8,6 +8,17 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [1.9.2] - 2026-08-09
+
+### Behoben
+- **Geschwindigkeits-Graph war in ALLEN Kartenansichten nur zum Teil sichtbar** (Fahrt-Detail UND
+  die neue Gruppen-Route) - Ursache: `<canvas>`-Elemente sind "replaced elements" mit einem
+  intrinsischen Seitenverhältnis (Standard 300x150 ohne eigene `width`/`height`-Attribute). Als
+  Flex-Kind bekommt ein solches Element ohne `min-height: 0` eine automatische Mindesthöhe aus
+  Breite/Seitenverhältnis, unter die `flex-shrink` nicht schrumpfen darf - der Graph-Canvas wurde
+  dadurch (deutlich) höher gerendert, als sein 220px-Abschnitt vorsah, nur der obere Teil blieb
+  sichtbar. `min-height: 0` auf `#speed-graph-canvas`/`#group-graph-canvas` behebt das.
+
 ## [1.9.1] - 2026-08-09
 
 ### Behoben

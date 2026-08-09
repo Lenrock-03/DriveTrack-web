@@ -629,9 +629,15 @@ input:focus {
   font-size: 0.85rem;
 }
 
-#speed-graph-canvas {
+#speed-graph-canvas, #group-graph-canvas {
   flex: 1;
   width: 100%;
+  /* Canvas ist ein "replaced element" mit intrinsischem Seitenverhältnis (Standard 300x150 ohne
+     width/height-Attribute) - ohne min-height:0 rechnet der Browser daraus eine automatische
+     Mindesthöhe (Breite/Seitenverhältnis), unter die flex-shrink NICHT schrumpfen darf, selbst bei
+     flex-basis:0%. Genau das ließ den Graphen bisher (deutlich) über seinen 220px-Abschnitt
+     hinausragen, nur der obere Teil war noch sichtbar. */
+  min-height: 0;
   /* verhindert, dass Ziehen auf dem Graph (Touch) stattdessen die Seite scrollt */
   touch-action: none;
   cursor: pointer;
