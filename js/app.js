@@ -644,8 +644,17 @@ function renderSegmentList(trip) {
       .join("");
 }
 
-/** Baut je markiertem Abschnitt eine gestrichelte Polyline in fester Signalfarbe (labelColor()). */
-function renderSegmentMarkLines(trip) {
+/**
+ * Baut je markiertem Abschnitt eine durchgezogene Polyline in fester Signalfarbe (labelColor()) auf
+ * der übergebenen Karte - bewusst durchgezogen statt gestrichelt (bis v2.1.1 per dashArray), die
+ * Signalfarbe hebt den Abschnitt schon klar genug ab, eine gestrichelte Linie wirkte auf der
+ * (ohnehin schon dunklen) Karte eher wie gepunktet und war schwerer zu verfolgen - spiegelt
+ * RouteDetailMap.kt::buildSegmentMarkOverlays() der App. Nimmt Karte + Ziel-Layer-Array als
+ * Parameter (statt fest detailMap/routeLineLayers zu nutzen), damit dieselbe Funktion seit v2.2.0
+ * auch von der Gruppen-Übersichtskarte (groupMap/groupRouteLineLayers) genutzt werden kann - vorher
+ * waren markierte Abschnitte dort gar nicht sichtbar.
+ */
+function renderSegmentMarkLines(trip, map, layerArray) {
   const marks = parseSegmentMarks(trip);
   if (marks.length === 0) return;
   const raw = parseTripPointsWithTime(trip);
@@ -657,9 +666,8 @@ function renderSegmentMarkLines(trip) {
     const line = L.polyline(inRange, {
       color: labelColor(mark.label),
       weight: 6,
-      dashArray: "10, 8",
-    }).addTo(detailMap);
-    routeLineLayers.push(line);
+    }).addTo(map);
+    layerArray.push(line);
   });
 }
 
@@ -1036,7 +1044,7 @@ function renderRouteLine(trip, points) {
 
   routeLineLayers.push(hoverLine);
   setupRouteHover(hoverLine, trip);
-  renderSegmentMarkLines(trip);
+  renderSegmentMarkLines(trip, detailMap, routeLineLayers);
 }
 
 /**
@@ -1350,6 +1358,8 @@ function getGroupSpeedSeries(trips) {
  * Fahrt) oder nach Geschwindigkeit eingefärbt. Für die Geschwindigkeitsfarbe zählt JE FAHRT deren
  * eigene getTripSpeedSeries() (nicht die kombinierte Gruppen-Serie) - für die Kartenfarbe zählt nur
  * die tatsächliche Geschwindigkeit an jedem Punkt, die Nahtstellen-Problematik betrifft nur den Graphen.
+ * Zusätzlich je Mitgliedsfahrt deren markierte Streckenabschnitte (z.B. Fähre) obendrauf - seit
+ * v2.2.0 (vorher nur auf der Einzelfahrt-Detailkarte sichtbar, siehe renderSegmentMarkLines()).
  */
 function renderGroupRouteLine(trips) {
   groupRouteLineLayers.forEach((l) => groupMap.removeLayer(l));
@@ -1384,6 +1394,7 @@ function renderGroupRouteLine(trips) {
       const line = L.polyline(points, { color: "#ff7a1a", weight: 5, opacity: 0.9 }).addTo(groupMap);
       groupRouteLineLayers.push(line);
     }
+    renderSegmentMarkLines(trip, groupMap, groupRouteLineLayers);
   });
 }
 

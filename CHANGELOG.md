@@ -8,6 +8,20 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.2.0] - 2026-08-15
+
+### Geändert
+- **Markierte Streckenabschnitte (z.B. Fähre) jetzt als durchgezogene statt gestrichelte Linie**:
+  die Signalfarbe (`labelColor()` - Fähre blau) hebt den Abschnitt schon klar genug von der
+  "normalen" Fahrstrecke ab (`renderSegmentMarkLines()`).
+
+### Hinzugefügt
+- **Markierte Streckenabschnitte jetzt auch auf der Gruppen-Übersichtskarte sichtbar**: vorher
+  zeigte `renderGroupRouteLine()` nur die reinen Routen-Linien der Mitgliedsfahrten, markierte
+  Abschnitte waren dort unsichtbar und nur auf der Einzelfahrt-Detailkarte zu sehen.
+  `renderSegmentMarkLines()` nimmt dafür jetzt Karte + Ziel-Layer-Array als Parameter statt fest
+  an die Detailkarte gebunden zu sein. Spiegelt sich 1:1 in der Android-App (App v0.16.0).
+
 ## [2.1.1] - 2026-08-15
 
 ### Behoben
