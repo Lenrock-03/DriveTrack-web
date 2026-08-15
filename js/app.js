@@ -574,6 +574,12 @@ function parseSegmentMarks(trip) {
  * Distanz/Dauer/Ø-/Höchstgeschwindigkeit NUR innerhalb eines markierten Abschnitts - unabhängig
  * von den Gesamt-Fahrt-Werten (die den Abschnitt weiterhin mit einschließen). Spiegelt
  * Trip.segmentStats() aus TripGeoMath.kt.
+ *
+ * Höchstgeschwindigkeit kommt bewusst aus derselben median-gefilterten Serie wie der Graph
+ * (getTripSpeedSeries()), NICHT aus roh berechneten Segment-Geschwindigkeiten nur dieses
+ * Abschnitts - ein separat lokal berechneter Filter hätte an den Rändern des (oft kurzen)
+ * Abschnitts weniger Nachbarpunkte zur Verfügung und würde vom sichtbaren Peak im hervorgehobenen
+ * Graphen-Bereich abweichen.
  */
 function computeSegmentStats(trip, mark) {
   const durationMinutes = Math.max(0, Math.round((mark.endTs - mark.startTs) / 60000));
@@ -581,12 +587,12 @@ function computeSegmentStats(trip, mark) {
   if (raw.length < 2) return { distanceKm: 0, durationMinutes, avgSpeedKmh: 0, maxSpeedKmh: 0 };
 
   let distanceMeters = 0;
-  let maxSpeedKmh = 0;
   for (let i = 1; i < raw.length; i++) {
     distanceMeters += haversineMeters(raw[i - 1], raw[i]);
-    const speed = Math.min(segmentSpeedKmh(raw[i - 1], raw[i]), PLAUSIBLE_MAX_CAR_KMH);
-    if (speed > maxSpeedKmh) maxSpeedKmh = speed;
   }
+  const maxSpeedKmh = getTripSpeedSeries(trip)
+    .filter((p) => p.timestamp >= mark.startTs && p.timestamp <= mark.endTs)
+    .reduce((max, p) => Math.max(max, p.speedKmh), 0);
   const avgSpeedKmh = durationMinutes > 0 ? (distanceMeters / 1000) / (durationMinutes / 60) : 0;
   return { distanceKm: distanceMeters / 1000, durationMinutes, avgSpeedKmh, maxSpeedKmh };
 }

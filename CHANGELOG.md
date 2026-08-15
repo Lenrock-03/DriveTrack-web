@@ -8,6 +8,19 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.1.1] - 2026-08-15
+
+### Behoben
+- **Unrealistische Höchstgeschwindigkeit eines markierten Abschnitts (z.B. Fähre)**:
+  `computeSegmentStats()` hat die Höchstgeschwindigkeit eines Abschnitts bisher aus rohen,
+  ungefilterten Segment-Geschwindigkeiten nur der Punkte innerhalb dieses (oft kurzen) Abschnitts
+  berechnet - ein einzelner GPS-Ausreißer an einem Randpunkt reichte für eine unerklärliche Anzeige
+  (z.B. 76 km/h bei einer ruhigen Fährüberfahrt), während der Graph für denselben Abschnitt
+  durchgehend niedrigere Werte zeigte. `computeSegmentStats()` liest die Höchstgeschwindigkeit
+  jetzt direkt aus derselben median-gefilterten Serie wie der Graph (`getTripSpeedSeries()`),
+  gefiltert auf den Zeitraum des Abschnitts - garantiert denselben Wert wie der sichtbare Peak.
+  Spiegelt sich 1:1 in der Android-App (`Trip.segmentStats()`, App v0.15.2).
+
 ## [2.1.0] - 2026-08-09
 
 ### Hinzugefügt
