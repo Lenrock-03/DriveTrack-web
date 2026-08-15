@@ -14,7 +14,12 @@ async function request(path, method, body, token) {
   const json = text ? JSON.parse(text) : {};
 
   if (!res.ok) {
-    throw new Error(json.error || `Fehler ${res.status}`);
+    // status mit auf den Error packen (nicht nur die Textnachricht) - damit Aufrufer einen
+    // abgelaufenen/ungültigen Token (401) zuverlässig erkennen können, ohne auf die genaue
+    // (deutsche) Fehlertext-Zeichenkette angewiesen zu sein, siehe loadAndRenderBackup().
+    const err = new Error(json.error || `Fehler ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
   return json;
 }

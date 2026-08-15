@@ -313,9 +313,32 @@ logoutBtn.addEventListener("click", () => {
 });
 
 // --- Backup laden & entschlüsseln ---
+/**
+ * Bei einem abgelaufenen/ungültigen Token (401, z.B. weil der gespeicherte Token seine 30-Tage-
+ * Gültigkeit überschritten hat) beendet loadAndRenderBackup() hier zentral die Session und schickt
+ * zurück zum Login - statt den Fehler an den jeweiligen Aufrufer (Entsperren, manuelles
+ * Aktualisieren, Auto-Refresh, "Daten neu laden") weiterzureichen. Wichtig für den Entsperren-
+ * Screen: der ruft loadAndRenderBackup() direkt nach der (rein lokalen, nie den Server befragenden)
+ * DEK-Entschlüsselung im selben try/catch auf - ohne diese zentrale Behandlung würde ein
+ * abgelaufener Token dort fälschlich als "Falsches Passwort" angezeigt, obwohl das Passwort/die
+ * Entschlüsselung selbst gar nicht das Problem war.
+ */
 async function loadAndRenderBackup() {
   if (!session || !dek) return;
-  const result = await api.downloadBackup(session.token);
+  let result;
+  try {
+    result = await api.downloadBackup(session.token);
+  } catch (e) {
+    if (e.status === 401) {
+      clearSession();
+      overlayStack = [];
+      showScreen("login");
+      document.getElementById("login-error").textContent =
+        "Sitzung abgelaufen - bitte erneut einloggen.";
+      return;
+    }
+    throw e;
+  }
   const blob = { ciphertextBase64: result.ciphertext, ivBase64: result.iv };
   const json = await cryptoUtil.decryptWithDek(blob, dek);
   const parsed = JSON.parse(json);

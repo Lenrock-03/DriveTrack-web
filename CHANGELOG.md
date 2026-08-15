@@ -8,6 +8,19 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.2.1] - 2026-08-15
+
+### Behoben
+- **Abgelaufener Token zeigte fälschlich "Falsches Passwort"**: der Entsperren-Screen entschlüsselt
+  den DEK rein lokal aus dem Passwort und ruft danach `loadAndRenderBackup()` im selben try/catch
+  auf - schlug der (gespeicherte, ggf. seine 30-Tage-Gültigkeit überschrittene) Token beim
+  anschließenden Backup-Download fehl, wurde das fälschlich als "Falsches Passwort" angezeigt,
+  obwohl die Entschlüsselung selbst gar nicht das Problem war. `loadAndRenderBackup()` erkennt
+  einen 401 jetzt zentral (neues `err.status` in `api.js`s `request()`), beendet die Session und
+  schickt zurück zum Login mit einer klaren "Sitzung abgelaufen"-Meldung - behebt nebenbei auch,
+  dass der 60-Sekunden-Auto-Refresh bei abgelaufenem Token bisher endlos im Hintergrund
+  fehlschlug, ohne dass die Fahrten je wieder erschienen wären.
+
 ## [2.2.0] - 2026-08-15
 
 ### Geändert
