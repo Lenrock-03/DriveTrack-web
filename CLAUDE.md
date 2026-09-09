@@ -58,6 +58,13 @@ in der App, per CSS-`filter` aufgehellt (`brightness(1.65)` – die Standard-Kac
   (siehe `ensureMainMap()` / der `setTimeout(...)`-Wrapper bei der Detail-Karte).
 - **`scp` von Windows nach Linux setzt kaputte Dateirechte**: Nach jedem Upload auf den VPS ggf.
   `chmod 755` (Ordner) / `chmod 644` (Dateien) nötig, sonst 403 Forbidden von Nginx.
+- **Karten zeigen nur noch "API KEY REQUIRED" als Wasserzeichen** (seit v2.2.2 behoben) – CARTO hat
+  die anonyme Nutzung von `basemaps.cartocdn.com` eingestellt. Fix: kostenloser Key von
+  [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey), als `CARTO_API_KEY`-Konstante
+  oben in `js/app.js` hinterlegt und über die gemeinsame `CARTO_TILE_URL` an allen vier
+  `L.tileLayer(...)`-Stellen angehängt. Kein Server-Geheimnis (Key ist für client-seitige
+  Kartennutzung gedacht, wie ein Google-Maps-JS-Key) – deshalb bewusst direkt im ausgelieferten JS
+  statt in einer nicht committeten Config. Spiegelt `BuildConfig.CARTO_API_KEY` in der App.
 
 ## Deployment
 

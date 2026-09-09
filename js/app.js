@@ -3,6 +3,14 @@ import * as cryptoUtil from "./crypto.js";
 
 const STORAGE_KEY = "drivetrack_session";
 
+// CARTO verlangt seit Kurzem einen (kostenlosen) API-Key fuer die Dark-Matter-Kacheln, sonst zeigt
+// jede Karte nur noch ein "API KEY REQUIRED"-Wasserzeichen statt echter Tiles - siehe
+// carto.com/basemaps/apikey. Kein Server-Geheimnis (die Keys sind fuer client-seitige Kartennutzung
+// gedacht, genau wie bei Google-Maps-JS-Keys), deshalb hier als normale Konstante statt Umgebungs-
+// variable - spiegelt BuildConfig.CARTO_API_KEY in der App (MapScreen.kt).
+const CARTO_API_KEY = "cb1_32iz_1_47079f65878eecb9f0458d99";
+const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
+
 // --- Zustand ---
 let session = loadSession(); // { token, username, email, passwordSalt, dekWrappedPassword } | null
 let dek = null; // NIE persistiert, nur im Speicher dieser Seite
@@ -971,7 +979,7 @@ function formatTripDuration(minutes) {
 function ensureMainMap() {
   if (mainMap) return;
   mainMap = L.map("map", { zoomControl: true }).setView([47.8, 11.7], 12);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  L.tileLayer(CARTO_TILE_URL, {
     subdomains: "abcd",
     maxZoom: 20,
     attribution: "&copy; OpenStreetMap &copy; CARTO",
@@ -1143,7 +1151,7 @@ function renderTripDetailScreen(trip) {
   setTimeout(() => {
     if (!detailMap) {
       detailMap = L.map("trip-detail-map", { zoomControl: true, preferCanvas: true });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer(CARTO_TILE_URL, {
         subdomains: "abcd",
         maxZoom: 20,
         attribution: "&copy; OpenStreetMap &copy; CARTO",
@@ -1651,7 +1659,7 @@ function renderGroupThumbnailPreview(trips) {
       touchZoom: false,
       tap: false,
     }).setView([47.8, 11.7], 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer(CARTO_TILE_URL, {
       subdomains: "abcd",
       maxZoom: 20,
     }).addTo(groupThumbMap);
@@ -1719,7 +1727,7 @@ function renderTripGroupRouteScreen(group, trips) {
   setTimeout(() => {
     if (!groupMap) {
       groupMap = L.map("trip-group-map", { zoomControl: true, preferCanvas: true }).setView([47.8, 11.7], 12);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer(CARTO_TILE_URL, {
         subdomains: "abcd",
         maxZoom: 20,
         attribution: "&copy; OpenStreetMap &copy; CARTO",

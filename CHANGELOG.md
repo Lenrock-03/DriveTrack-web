@@ -8,6 +8,17 @@ Die Versionsnummer steht als einzige Quelle der Wahrheit im `<meta name="app-ver
 `index.html` (kein Build-Step, der eine Konstante automatisch einsetzen könnte) und wird zusätzlich
 unten in "Konto / Settings" angezeigt.
 
+## [2.2.2] - 2026-09-09
+
+### Behoben
+- **Alle Karten zeigten nur noch ein "API KEY REQUIRED"-Wasserzeichen statt echter Kacheln**: CARTO
+  hat die anonyme Nutzung der Dark-Matter-Kacheln (`basemaps.cartocdn.com`) eingestellt, ein
+  API-Key ist jetzt Pflicht (weiterhin kostenlos, bis 5 Mio. Kachel-Anfragen/Monat, siehe
+  [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey)). Betraf alle vier Leaflet-Karten
+  (Home, Fahrt-Detail, Gruppen-Vorschau, Gruppen-Route) - jetzt über eine gemeinsame
+  `CARTO_TILE_URL`-Konstante in `js/app.js` (vorher vierfach dieselbe URL kopiert). Spiegelt den
+  gleichzeitigen Fix in der App (`BuildConfig.CARTO_API_KEY`, App 0.16.3).
+
 ## [2.2.1] - 2026-08-15
 
 ### Behoben
